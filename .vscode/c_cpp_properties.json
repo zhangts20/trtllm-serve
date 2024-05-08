@@ -4,7 +4,11 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/build/vendor/rapidjson/src/rapidjson/include"
+                "${workspaceFolder}/build/vendor/rapidjson/src/rapidjson/include",
+                "${workspaceFolder}/vendor/tensorrt_llm_cpp",
+                "${workspaceFolder}/vendor/tensorrt_llm_cpp/include",
+                "/usr/local/cuda/include",
+                "/data/zhangtaoshan/files/TensorRT-9.3.0.1/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

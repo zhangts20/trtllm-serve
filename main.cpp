@@ -3,8 +3,12 @@
 #include <string>
 
 #include "rapidjson/document.h"
+#include "tensorrt_llm/runtime/gptSession.h"
 
 int main() {
+    /// 1. Initialize GPT Inference Session
+    
+
     std::ifstream t("/data/zhangtaoshan/models/llama2-7b/config.json");
     std::string t_str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
 
