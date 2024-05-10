@@ -1,5 +1,6 @@
 import os
 import torch
+
 torch.set_printoptions(sci_mode=False)
 
 import tempfile
@@ -12,10 +13,10 @@ from tensorrt_llm._utils import trt_dtype_to_torch
 
 
 def export_onnx(model: torch.nn.Module, image: torch.Tensor,
-                output_dir: str) -> None:
+                onnx_path: str) -> None:
     torch.onnx.export(model,
                       image,
-                      f"{output_dir}/tmp.onnx",
+                      onnx_path,
                       opset_version=17,
                       input_names=["input"],
                       output_names=["output"],
@@ -25,7 +26,7 @@ def export_onnx(model: torch.nn.Module, image: torch.Tensor,
 
 
 def export_engine(img_h: int, img_w: int, max_batch_size: int, onnx_path: str,
-                  engine_path: str) -> None:
+                  engine_path: str, dtype: torch.dtype) -> None:
     logger = trt.Logger(trt.Logger.ERROR)
 
     builder = trt.Builder(logger)
@@ -33,14 +34,15 @@ def export_engine(img_h: int, img_w: int, max_batch_size: int, onnx_path: str,
         1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
     profile = builder.create_optimization_profile()
     config = builder.create_builder_config()
-    config.set_flag(trt.BuilderFlag.FP16)
+    if dtype == torch.float16:
+        config.set_flag(trt.BuilderFlag.FP16)
 
     parser = trt.OnnxParser(network, logger)
     with open(onnx_path, "rb") as model:
         parser.parse(model.read(), onnx_path)
 
     # delete onnx model
-    os.remove(onnx_path)
+    # os.remove(onnx_path)
 
     nBS = -1
     nMinBS = 1
@@ -61,7 +63,7 @@ def export_engine(img_h: int, img_w: int, max_batch_size: int, onnx_path: str,
 
 class TrtSession:
 
-    def __init__(self, engine_path: str) -> None:
+    def __init__(self, engine_path: str, dtype: torch.dtype) -> None:
         super().__init__()
 
         self.stream = torch.cuda.current_stream().cuda_stream
@@ -70,12 +72,17 @@ class TrtSession:
         with open(engine_path, "rb") as f:
             engine = f.read()
         self.session = Session.from_serialized_engine(engine)
+        self.dtype = dtype
 
     @calculate_time
     def infer(self, image: torch.Tensor) -> torch.Tensor:
         vis_inputs = {"input": image}
-        vis_outputs = self.session.infer_shapes(
-            [TensorInfo("input", trt.DataType.HALF, image.shape)])
+        if self.dtype == torch.float16:
+            vis_outputs = self.session.infer_shapes(
+                [TensorInfo("input", trt.DataType.HALF, image.shape)])
+        elif self.dtype == torch.float32:
+            vis_outputs = self.session.infer_shapes(
+                [TensorInfo("input", trt.DataType.FLOAT, image.shape)])
         vis_outputs = {
             t.name:
             torch.empty(tuple(t.shape),

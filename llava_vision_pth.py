@@ -11,7 +11,7 @@ from utils import calculate_time
 
 class LlavaVision(torch.nn.Module):
 
-    def __init__(self, model_dir: str):
+    def __init__(self, model_dir: str, dtype=torch.float16):
         super().__init__()
 
         config_file = os.path.join(model_dir, "config.json")
@@ -30,6 +30,7 @@ class LlavaVision(torch.nn.Module):
         self.mm_path = os.path.join(model_dir, "mm_projector.bin")
 
         self.device = "cuda"
+        self.dtype = dtype
 
         # load model
         self.load_clip()
@@ -37,7 +38,7 @@ class LlavaVision(torch.nn.Module):
 
     def load_clip(self):
         self.vision_tower = CLIPVisionModel.from_pretrained(
-            self.vision_path).half()
+            self.vision_path).to(self.dtype)
         self.vision_tower.requires_grad_(False)
         self.vision_tower = self.vision_tower.to(self.device)
 
@@ -58,11 +59,12 @@ class LlavaVision(torch.nn.Module):
         processor = CLIPImageProcessor.from_pretrained(self.vision_path)
         image: torch.Tensor = processor.preprocess(
             images, return_tensors="pt")["pixel_values"]
-        return image.half().to(self.device)
+        return image.to(dtype=self.dtype, device=self.device)
 
     @calculate_time
-    def forward(self, x: torch.Tensor):
-        x = self.vision_tower(x, output_hidden_states=True).hidden_states[self.select_layer]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.vision_tower(
+            x, output_hidden_states=True).hidden_states[self.select_layer]
         if self.select_feature == "patch":
             x = x[:, 1:].contiguous()
 
@@ -71,12 +73,16 @@ class LlavaVision(torch.nn.Module):
 
         # mm projector, Linear + GELU + Linear
         x = F.linear(input=x,
-                     weight=self.mm_weights["model.mm_projector.0.weight"],
-                     bias=self.mm_weights["model.mm_projector.0.bias"])
+                     weight=self.mm_weights["model.mm_projector.0.weight"].to(
+                         self.dtype),
+                     bias=self.mm_weights["model.mm_projector.0.bias"].to(
+                         self.dtype))
         x = F.gelu(x)
         x = F.linear(input=x,
-                     weight=self.mm_weights["model.mm_projector.2.weight"],
-                     bias=self.mm_weights["model.mm_projector.2.bias"])
+                     weight=self.mm_weights["model.mm_projector.2.weight"].to(
+                         self.dtype),
+                     bias=self.mm_weights["model.mm_projector.2.bias"].to(
+                         self.dtype))
 
         return x.view(B, L, -1)
 
@@ -89,4 +95,4 @@ if __name__ == "__main__":
     for _ in range(10):
         x = model(image)
     print("out:\n", x[0].cpu().numpy())
-    print("out shape: ", x.shape) 
+    print("out shape: ", x.shape)
