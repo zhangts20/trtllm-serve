@@ -23,10 +23,6 @@ endif()
 include_directories(${CUDAToolkit_INCLUDE_DIRS})
 link_directories(${CUDAToolkit_LIBRARY_DIR})
 
-## rapidjson
-include(${CMAKE_SOURCE_DIR}/vendor/rapidjson.cmake)
-include_directories(${RAPIDJSON_INCLUDE_DIR})
-
 ## TensorRT
 if(NOT DEFINED TRT_DIR)
     message(FATAL_ERROR "You must specify the directory of TensorRT.")

@@ -1,4 +1,5 @@
 images
 build
+vendor
 __pycache__
 .vscode
