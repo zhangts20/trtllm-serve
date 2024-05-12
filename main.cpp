@@ -2,7 +2,6 @@
 #include <fstream>
 #include <string>
 
-#include "rapidjson/document.h"
 #include "tensorrt_llm/runtime/gptSession.h"
 #include "tensorrt_llm/runtime/gptJsonConfig.h"
 #include "tensorrt_llm/runtime/tllmLogger.h"
