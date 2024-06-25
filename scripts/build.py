@@ -1,71 +1,97 @@
 import os
-import subprocess
-from typing import List
-from dataclasses import dataclass
+import argparse
 
-# The root directory of models
-root_dir = "/data/zhangtaoshan/models"
-
-
-@dataclass
-class BuildParam:
-    # The os.path.join(root_dir, model_type) refers to the origin model
-    model_type: str
-    # The build type, support fp16, w8a16, w4a16, w8a8 and all can be
-    # combined with int8kv
-    build_type: str
-    # Tensor Parallelism
-    tp_size: int
-    # Pipeline Parallelism
-    pp_size: int
-    # The max batch size of generated model
-    max_batch_size: int
-    # The max input length of generated model
-    max_input_length: int
-    # The max output length of generated model
-    max_output_length: int
+from tempfile import TemporaryDirectory
+from convert_checkpoint import convert
+from export_engine import export
+from config import BuildParam
 
 
-def export(p: BuildParam, input_dir: str) -> List[str]:
-    cmd = ["trtllm-build"]
+def main(p: BuildParam, root_dir: str) -> None:
+    # whether use int8kv or not
+    use_int8kv = "int8kv" in p.build_type
+    p.build_type = p.build_type.split(",")[0]
+    assert p.build_type in ["fp16", "w8a16", "w4a16", "w8a8"]
 
-    cmd.extend(["--checkpoint_dir", os.path.join(root_dir, input_dir)])
-    output_name = "_".join(p.build_type.split(","))
-    output_dir = os.path.join(
-        root_dir,
-        f"{p.model_type}_{output_name}_{p.max_batch_size}_{p.max_input_length}_{p.max_output_length}"
-    )
-    cmd.extend(["--output_dir", output_dir])
+    # input model directory
+    model_dir = os.path.join(root_dir, p.model_name)
 
-    cmd.extend(["--max-batch-size", p.max_batch_size])
-    cmd.extend(["--max_input_len", p.max_input_length])
-    cmd.extend(["--max_output_len", p.max_output_length])
+    # rename output directory
+    output_name = f"{p.model_name}-tp{p.tp_size}-pp{p.pp_size}-{p.max_batch_size}-{p.max_input_length}-{p.max_output_length}"
+    output_dir = os.path.join(root_dir, output_name)
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
 
-    cmd.extend(["--tp_size", p.tp_size])
-    cmd.extend(["--pp_size", p.pp_size])
+    temp_dir = TemporaryDirectory(dir=root_dir)
+    # 0. Convert Weights
+    convert(p, use_int8kv, model_dir, output_dir=temp_dir.name)
 
-    cmd = " ".join(cmd)
-    print(f"The cmd of exporting engine: {cmd}")
-    ret = subprocess.run(cmd, shell=True).returncode
-    if ret != 0:
-        raise RuntimeError("Error when exporting engine.")
-    print(f"Export engine to {output_dir} successfully.")
+    # 1. Export Engine
+    export(p, model_dir=temp_dir.name, output_dir=output_dir)
 
 
-def main(param: BuildParam) -> None:
-    pass
+def parser_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root-dir",
+                        type=str,
+                        required=True,
+                        help="The root directory of model.")
+    parser.add_argument("--model-name",
+                        type=str,
+                        required=True,
+                        help="The model name to build.")
+    parser.add_argument("--build-type",
+                        type=str,
+                        default="fp16",
+                        choices=[
+                            "fp16", "fp16,int8kv", "w8a16", "w8a16,int8kv",
+                            "w4a16", "w4a16,int8kv", "w8a8", "w8a8,int8kv"
+                        ],
+                        help="The quantization of generated model.")
+    parser.add_argument("--tp-size",
+                        type=int,
+                        default=1,
+                        help="The tensor parallel.")
+    parser.add_argument("--pp-size",
+                        type=int,
+                        default=1,
+                        help="The pipeline parallel.")
+    parser.add_argument("--max-bs",
+                        type=int,
+                        default=8,
+                        help="The max batch of output of generated model.")
+    parser.add_argument("--max-beam",
+                        type=int,
+                        default=1,
+                        help="The max beam width of generated model.")
+    parser.add_argument("--max-in",
+                        type=int,
+                        default=1024,
+                        help="The max length of input of generated model.")
+    parser.add_argument("--max-out",
+                        type=int,
+                        default=512,
+                        help="The max length of output of generated model.")
+
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    # The list of params to build model
-    build_params = [{
-        "model_type": "llama-7b",
-        "build_type": "fp16",
-        "tp_size": 1,
-        "pp_size": 1,
-        "max_batch_size": 8,
-        "max_input_length": 1024,
-        "max_output_length": 512
-    }]
-    for build_param in build_params:
-        main(**build_param)
+    args = parser_args()
+    print("Build Parameters:")
+    print("================ Argument ================")
+    for key in vars(args):
+        print("{}: {}".format(key, vars(args)[key]))
+    print("==========================================")
+
+    build_param = {
+        "model_name": args.model_name,
+        "build_type": args.build_type,
+        "tp_size": args.tp_size,
+        "pp_size": args.pp_size,
+        "max_batch_size": args.max_bs,
+        "max_beam_width": args.max_beam,
+        "max_input_length": args.max_in,
+        "max_output_length": args.max_out,
+    }
+    main(BuildParam(**build_param), root_dir=args.root_dir)
