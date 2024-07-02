@@ -28,8 +28,8 @@ def export(p: BuildParam, model_dir: str, output_dir: str) -> None:
         "max_output_len": p.max_output_length,
         "max_batch_size": p.max_batch_size,
         "max_beam_width": p.max_beam_width,
-        "max_num_tokens": -1,
-        "max_opt_tokens": -1,
+        "max_num_tokens": p.max_batch_size * p.max_input_length,
+        "opt_num_tokens": p.max_batch_size * p.max_beam_width,
     })
     model_config = PretrainedConfig.from_json_file(
         os.path.join(model_dir, "config.json"))

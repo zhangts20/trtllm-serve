@@ -5,29 +5,42 @@ from tempfile import TemporaryDirectory
 from convert_checkpoint import convert
 from export_engine import export
 from config import BuildParam
+from utils import replace_function
 
 
-def main(p: BuildParam, root_dir: str) -> None:
+def main(p: BuildParam) -> None:
     # whether use int8kv or not
     use_int8kv = "int8kv" in p.build_type
     p.build_type = p.build_type.split(",")[0]
     assert p.build_type in ["fp16", "w8a16", "w4a16", "w8a8"]
 
     # input model directory
-    model_dir = os.path.join(root_dir, p.model_name)
+    model_dir = os.path.join(args.root_dir, p.model_name)
 
     # rename output directory
-    output_name = f"{p.model_name}-tp{p.tp_size}-pp{p.pp_size}-{p.max_batch_size}-{p.max_input_length}-{p.max_output_length}"
-    output_dir = os.path.join(root_dir, output_name)
+    if use_int8kv:
+        btype = p.build_type + "-int8kv"
+    else:
+        btype = p.build_type
+    output_name = f"{p.model_name}-{btype}-tp{p.tp_size}-pp{p.pp_size}-{p.max_batch_size}-{p.max_input_length}-{p.max_output_length}"
+    output_dir = os.path.join(args.root_dir, output_name)
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
-    temp_dir = TemporaryDirectory(dir=root_dir)
+    # replace modules
+    replace_function(num_calib=args.num_calib)
+
+    temp_dir = TemporaryDirectory(dir=args.root_dir)
     # 0. Convert Weights
-    convert(p, use_int8kv, model_dir, output_dir=temp_dir.name)
+    convert(p,
+            use_int8kv,
+            model_dir,
+            output_dir=temp_dir.name,
+            calib_dataset=args.calib_dataset)
 
     # 1. Export Engine
     export(p, model_dir=temp_dir.name, output_dir=output_dir)
+    print(f"Engine has been exported to {output_dir}")
 
 
 def parser_args():
@@ -72,6 +85,9 @@ def parser_args():
                         type=int,
                         default=512,
                         help="The max length of output of generated model.")
+    parser.add_argument("--calib-dataset",
+                        type=str,
+                        help="The calibration dataset used in int8 kv.")
 
     return parser.parse_args()
 
@@ -94,4 +110,4 @@ if __name__ == "__main__":
         "max_input_length": args.max_in,
         "max_output_length": args.max_out,
     }
-    main(BuildParam(**build_param), root_dir=args.root_dir)
+    main(BuildParam(**build_param))
