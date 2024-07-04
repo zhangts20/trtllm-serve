@@ -15,6 +15,7 @@ from config import BuildParam
 def args_to_quantization(
     build_type: str,
     use_int8kv: bool,
+    sq_value: float,
 ) -> QuantConfig:
     q_config = QuantConfig()
     q_config.exclude_modules = ["lm_head"]
@@ -29,6 +30,9 @@ def args_to_quantization(
     if use_int8kv:
         q_config.kv_cache_quant_algo = QuantAlgo.INT8
 
+    if sq_value is not None:
+        q_config.smoothquant_val = sq_value
+
     return q_config
 
 
@@ -38,8 +42,9 @@ def convert(
     model_dir: str,
     output_dir: str,
     calib_dataset: str = None,
+    sq_value: float = None,
 ) -> None:
-    q_config = args_to_quantization(p.build_type, use_int8kv)
+    q_config = args_to_quantization(p.build_type, use_int8kv, sq_value)
     if p.build_type == "w8a8" or use_int8kv:
         assert calib_dataset is not None, "Please set calib_dataset when build type is w8a8 or int8kv."
         mapping = Mapping(world_size=p.tp_size * p.pp_size,

@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from convert_checkpoint import convert
 from export_engine import export
 from config import BuildParam
-from utils import replace_function
+from utils import replace_function, copy_tokenizer
 
 
 def main(p: BuildParam) -> None:
@@ -28,7 +28,7 @@ def main(p: BuildParam) -> None:
         os.mkdir(output_dir)
 
     # replace modules
-    replace_function(num_calib=args.num_calib)
+    replace_function()
 
     temp_dir = TemporaryDirectory(dir=args.root_dir)
     # 0. Convert Weights
@@ -36,11 +36,15 @@ def main(p: BuildParam) -> None:
             use_int8kv,
             model_dir,
             output_dir=temp_dir.name,
-            calib_dataset=args.calib_dataset)
+            calib_dataset=args.calib_dataset,
+            sq_value=args.sq_value)
 
     # 1. Export Engine
     export(p, model_dir=temp_dir.name, output_dir=output_dir)
     print(f"Engine has been exported to {output_dir}")
+
+    # 2. Copy Tokenizer
+    copy_tokenizer(input_dir=os.path.join(args.root_dir, p.model_name), output_dir=output_dir)
 
 
 def parser_args():
@@ -61,6 +65,10 @@ def parser_args():
                             "w4a16", "w4a16,int8kv", "w8a8", "w8a8,int8kv"
                         ],
                         help="The quantization of generated model.")
+    parser.add_argument("--sq-value",
+                        type=float,
+                        default=0.8,
+                        help="The value used in smooth quant.")
     parser.add_argument("--tp-size",
                         type=int,
                         default=1,
