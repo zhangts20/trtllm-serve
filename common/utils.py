@@ -1,7 +1,5 @@
 import time
 
-__all__ = ["calculate_time"]
-
 
 def calculate_time(func):
 
