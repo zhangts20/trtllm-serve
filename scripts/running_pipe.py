@@ -336,89 +336,6 @@ class GenerationSession(object):
 
         return new_token_ids
 
-    def decode_regular_re(
-        self,
-        batch_size: int,
-        batch_input_ids: torch.Tensor,
-        context_lengths: torch.Tensor,
-        host_context_lengths: torch.Tensor,
-        cache_indirection: torch.Tensor,
-    ) -> torch.Tensor:
-        for step in range(self.max_new_tokens):
-            if step % 2:
-                context = self.runtime.context_0
-            else:
-                context = self.runtime.context_1
-            # prefill
-            if step == 0:
-                model_inputs = self._prepare_context_inputs(
-                    batch_size=batch_size,
-                    context_lengths=context_lengths,
-                    host_context_lengths=host_context_lengths)
-                position_ids = model_inputs.get("position_ids", None)
-                last_token_ids = model_inputs.get("last_token_ids")
-                attention_mask = model_inputs.get("attention_mask", None)
-                # paged kv cache
-                host_kv_cache_block_offsets = self.kv_cache_manager.get_block_offsets(
-                    1)
-                kv_cache_block_offsets = host_kv_cache_block_offsets.to("cuda")
-
-                batch_size = context_lengths.size(0)
-                ctx_tensors = self.get_shape_buffer(
-                    batch_size=batch_size,
-                    input_ids=batch_input_ids,
-                    context_lengths=context_lengths,
-                    host_context_lengths=host_context_lengths,
-                    position_ids=position_ids,
-                    last_token_ids=last_token_ids,
-                    attention_mask=attention_mask,
-                    cache_indirection=cache_indirection,
-                    kv_cache_block_offsets=kv_cache_block_offsets,
-                    host_kv_cache_block_offsets=host_kv_cache_block_offsets,
-                    step=step,
-                    is_prefill=True)
-
-                context = self.runtime.ctx_context
-                self.runtime._set_tensors(context, ctx_tensors)
-
-            stream = torch.cuda.current_stream().cuda_stream
-            ok = self.runtime._run(context, stream)
-            assert ok, "run engine failed"
-
-            # handle next step
-            if not step == self.max_new_tokens - 1:
-                model_inputs = self._prepare_generation_inputs(
-                    context_lengths=context_lengths, step=step)
-                position_ids = model_inputs.get("position_ids", None)
-                last_token_ids = model_inputs.get("last_token_ids")
-                attention_mask = model_inputs.get("attention_mask", None)
-
-                self.kv_cache_manager.step([False] * batch_size)
-                host_kv_cache_block_offsets = self.kv_cache_manager.get_block_offsets(
-                    1)
-                kv_cache_block_offsets = host_kv_cache_block_offsets.to("cuda")
-
-                next_token_ids = self.get_next_tokens(self.buffer["logits"])
-                next_context = self.runtime.context_1 if step % 2 else self.runtime.context_0
-                next_step_tensors = self.get_shape_buffer(
-                    batch_size=batch_size,
-                    input_ids=next_token_ids,
-                    context_lengths=context_lengths,
-                    host_context_lengths=host_context_lengths,
-                    position_ids=position_ids,
-                    last_token_ids=last_token_ids,
-                    attention_mask=attention_mask,
-                    cache_indirection=cache_indirection,
-                    kv_cache_block_offsets=kv_cache_block_offsets,
-                    host_kv_cache_block_offsets=host_kv_cache_block_offsets,
-                    step=step,
-                    is_prefill=False)
-                print(">>>>>> step=", step)
-                for k, v in next_step_tensors.items():
-                    print(f"{k}={v.to_torch()}")
-                    print(f"{k}.shape={v.to_torch().shape}")
-                self.runtime._set_tensors(next_context, next_step_tensors)
-
     def decode(
         self,
         batch_size: int,
@@ -609,8 +526,8 @@ def load_tokenizer(tokenizer_dir: str) -> PreTrainedTokenizer:
 
 
 def prepare_input(
-    tokenizer: PreTrainedTokenizer, 
-    input_text: List[str], 
+    tokenizer: PreTrainedTokenizer,
+    input_text: List[str],
     max_input_length=923,
 ) -> torch.Tensor:
     batch_input_ids = []
