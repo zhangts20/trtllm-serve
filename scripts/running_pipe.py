@@ -13,7 +13,7 @@ from tensorrt_llm.runtime.generation import (_Runtime, KVCacheManager,
                                              GenerationSequence, RuntimeTensor,
                                              Mapping)
 from tensorrt_llm._utils import trt_dtype_to_torch, str_dtype_to_torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 from typing import List, Tuple, Dict
 
 
@@ -62,6 +62,29 @@ class GenerationSession(object):
         num_blocks = self.batch_size * self.beam_width * max_blocks_per_seq
 
         return num_blocks, max_blocks_per_seq
+
+    def prepare_inputs(
+        self,
+        step: int,
+        batch_size: int,
+        context_lengths: torch.Tensor,
+        host_context_lengths: torch.Tensor,
+        is_prefill: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if is_prefill:
+            last_token_ids = context_lengths.detach().clone()
+            position_ids = torch.concat([
+                torch.arange(0,
+                             host_context_lengths[i],
+                             dtype=torch.int32,
+                             device='cuda') for i in range(batch_size)
+            ])
+        else:
+            last_token_ids = torch.ones_like(context_lengths)
+            position_ids = context_lengths + step
+        last_token_ids = torch.cumsum(last_token_ids, dim=0).int()
+
+        return position_ids, last_token_ids
 
     def _prepare_context_inputs(
         self,
@@ -182,7 +205,6 @@ class GenerationSession(object):
         host_context_lengths: torch.Tensor,
         position_ids: torch.Tensor,
         last_token_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
         cache_indirection: torch.Tensor,
         kv_cache_block_offsets: torch.Tensor,
         host_kv_cache_block_offsets: torch.Tensor,
@@ -201,9 +223,6 @@ class GenerationSession(object):
                 name:
                 RuntimeTensor.from_torch(name, x, override_shape=shape)
             })
-
-        if self.use_gpt_attention_plugin:
-            assert attention_mask is None, "attention mask is none when use gpt attention plugin"
 
         tensors = {}
         if self.use_gpt_attention_plugin:
@@ -272,10 +291,58 @@ class GenerationSession(object):
     def decode_regular(
         self,
         batch_size: int,
+        batch_input_ids: torch.Tensor,
         context_lengths: torch.Tensor,
         host_context_lengths: torch.Tensor,
-        cache_indirection: List[torch.Tensor],
+        cache_indirection: torch.Tensor,
+    ) -> List[torch.Tensor]:
+        context = self.runtime.context_0
+        new_token_ids = []
+        for step in range(self.max_new_tokens):
+            is_prefill = step == 0
+            position_ids, last_token_ids = self.prepare_inputs(
+                step=step,
+                batch_size=batch_size,
+                context_lengths=context_lengths,
+                host_context_lengths=host_context_lengths,
+                is_prefill=is_prefill)
+
+            if not is_prefill:
+                self.kv_cache_manager.step([False] * batch_size)
+            host_kv_cache_block_offsets = self.kv_cache_manager.get_block_offsets(
+                1)
+            kv_cache_block_offsets = host_kv_cache_block_offsets.to("cuda")
+
+            tensors = self.get_shape_buffer(
+                batch_size=batch_size,
+                input_ids=batch_input_ids,
+                context_lengths=context_lengths,
+                host_context_lengths=host_context_lengths,
+                position_ids=position_ids,
+                last_token_ids=last_token_ids,
+                cache_indirection=cache_indirection,
+                kv_cache_block_offsets=kv_cache_block_offsets,
+                host_kv_cache_block_offsets=host_kv_cache_block_offsets,
+                step=step,
+                is_prefill=is_prefill)
+            self.runtime._set_tensors(context, tensors)
+
+            stream = torch.cuda.current_stream().cuda_stream
+            ok = self.runtime._run(context, stream)
+            assert ok, "run engine failed"
+
+            batch_input_ids = self.get_next_tokens(self.buffer["logits"])
+            new_token_ids.append(batch_input_ids)
+
+        return new_token_ids
+
+    def decode_regular_re(
+        self,
+        batch_size: int,
         batch_input_ids: torch.Tensor,
+        context_lengths: torch.Tensor,
+        host_context_lengths: torch.Tensor,
+        cache_indirection: torch.Tensor,
     ) -> torch.Tensor:
         for step in range(self.max_new_tokens):
             if step % 2:
@@ -389,11 +456,15 @@ class GenerationSession(object):
             self.kv_cache_manager.add_sequence(generation_seq,
                                                self.max_context_length)
 
-        return self.decode_regular(batch_size=batch_size,
-                                   context_lengths=context_lengths,
-                                   host_context_lengths=host_context_length,
-                                   cache_indirection=cache_indirection,
-                                   batch_input_ids=batch_input_ids)
+        new_token_ids = self.decode_regular(
+            batch_size=batch_size,
+            batch_input_ids=batch_input_ids,
+            context_lengths=context_lengths,
+            host_context_lengths=host_context_length,
+            cache_indirection=cache_indirection)
+        new_token_ids = torch.concat(new_token_ids, dim=-1)
+
+        return new_token_ids
 
 
 class EngineConfig(object):
@@ -525,7 +596,7 @@ class ModelRunner(object):
         return runner
 
 
-def load_tokenizer(tokenizer_dir: str):
+def load_tokenizer(tokenizer_dir: str) -> PreTrainedTokenizer:
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir,
                                               legacy=False,
                                               padding_side="left",
@@ -537,7 +608,11 @@ def load_tokenizer(tokenizer_dir: str):
     return tokenizer
 
 
-def prepare_input(tokenizer, input_text, max_input_length=923):
+def prepare_input(
+    tokenizer: PreTrainedTokenizer, 
+    input_text: List[str], 
+    max_input_length=923,
+) -> torch.Tensor:
     batch_input_ids = []
     for curr_text in input_text:
         input_ids = tokenizer.encode(curr_text,
@@ -589,5 +664,10 @@ if __name__ == "__main__":
     runner = ModelRunner.from_dir(args.engine_dir, rank=runtime_rank)
     # 3. generate
     with torch.no_grad():
-        runner.generate(batch_input_ids=batch_input_ids,
-                        max_new_tokens=args.max_new_tokens)
+        output_ids = runner.generate(batch_input_ids=batch_input_ids,
+                                     max_new_tokens=args.max_new_tokens)
+    # 4. print output
+    if runtime_rank == 0:
+        output_ids = output_ids.tolist()
+        output_texts = tokenizer.batch_decode(output_ids)
+        print("output text: ", output_texts)
