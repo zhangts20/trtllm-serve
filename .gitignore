@@ -1,4 +1,7 @@
-images
 __pycache__
 .vscode
-tests
+*.yml
+!base.yml
+model.cache
+build
+test_scripts
