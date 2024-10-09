@@ -1,6 +1,9 @@
 import os
 import shutil
 import subprocess
+import tensorrt_llm
+
+tllm_version = tensorrt_llm.__version__
 
 from tllm.args import BuildConfig
 
@@ -66,9 +69,20 @@ def export_engine(build_config: BuildConfig):
     command.extend(["--output_dir", output_dir])
     command.extend(["--gemm_plugin", build_config.dtype])
     command.extend(["--gpt_attention_plugin", build_config.dtype])
+
     command.extend(["--max_batch_size", str(build_config.max_batch_size)])
     command.extend(["--max_input_len", str(build_config.max_input_len)])
-    command.extend(["--max_output_len", str(build_config.max_output_len)])
+    if tllm_version == "0.10.0":
+        command.extend(["--max_output_len", str(build_config.max_output_len)])
+    elif tllm_version == "0.13.0":
+        command.extend([
+            "--max_seq_len",
+            str(build_config.max_input_len + build_config.max_output_len)
+        ])
+    else:
+        raise RuntimeError(f"unsupported tensorrt_llm version: {tllm_version}")
+    if build_config.max_num_tokens == -1:
+        build_config.max_num_tokens = build_config.max_batch_size * build_config.max_input_len
     command.extend(["--max_num_tokens", str(build_config.max_num_tokens)])
     if build_config.use_prompt_cache:
         command.extend(["--use_paged_context_fmha", "enable"])
