@@ -3,9 +3,9 @@ output_dir: None
 model_type: "llama"
 remove_temp_dir: true
 tp_size: 4
-dtype: "bfloat16"
+dtype: "bf"
 max_batch_size: 128
 max_input_len: 2048
 max_output_len: 1024
-max_num_tokens: -1
-use_prompt_cache: false
+max_num_tokens: 20000
+use_prompt_cache: true

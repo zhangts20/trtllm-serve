@@ -5,33 +5,33 @@ import tensorrt_llm
 
 tllm_version = tensorrt_llm.__version__
 
-from tllm.args import BuildConfig
+from args import BuildConfig
 
-TLLM_ROOT = os.getenv("TLLM_ROOT", "/usr/src/TensorRT-LLM/examples")
+TRTLLM_ROOT = os.getenv("TRTLLM_ROOT", "/usr/src/TensorRT-LLM/examples")
 
 DTYPE_MAPPING = {
-    "bfloat16": "bf",
-    "float16": "fp",
-    "float8": "f8",
-    "w4a16": "w4",
-    "w8a16": "w8",
-    "w8a8": "a8"
+    "fp": "float16",
+    "bf": "bfloat16",
+    "f8": "float8",
+    "w4": "w4a16",
+    "w8": "w8a16",
+    "a8": "w8a8",
 }
 
 
 def get_temp_dir(temp_dir: str, model_dir: str):
-    return temp_dir if temp_dir is "None" else f"{model_dir}-temp"
+    return temp_dir if temp_dir == "None" else f"{model_dir}-temp"
 
 
 def convert_checkpoint(build_config: BuildConfig):
     command = [
         "python",
-        os.path.join(TLLM_ROOT, str(build_config.model_type),
+        os.path.join(TRTLLM_ROOT, str(build_config.model_type),
                      "convert_checkpoint.py")
     ]
     command.extend(["--model_dir", build_config.model_dir])
     command.extend(["--tp_size", str(build_config.tp_size), "--pp_size", "1"])
-    command.extend(["--dtype", build_config.dtype])
+    command.extend(["--dtype", DTYPE_MAPPING[build_config.dtype]])
     temp_dir = get_temp_dir(build_config.temp_dir, build_config.model_dir)
     build_config.temp_dir = temp_dir
     command.extend(["--output_dir", temp_dir])
@@ -50,12 +50,17 @@ def get_output_dir(build_config: BuildConfig):
         return build_config.output_dir
 
     input_file_name = os.path.basename(build_config.model_dir)
-    # name-tpN-fp/f8/w4/w8/a8-wcache/ocache
+    # name-tpN-fp/bf/f8/w4/w8/a8-wcache/ocache
     cache_str = "wcache" if build_config.use_prompt_cache else "ocache"
     output_file_name = f"{input_file_name}-tp{build_config.tp_size}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
 
-    return os.path.join(os.path.dirname(build_config.model_dir),
-                        output_file_name)
+    dir_name = "trtllm_" + tllm_version.replace(".", "")
+    output_dir = os.path.join(os.path.dirname(build_config.model_dir),
+                              dir_name)
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
+    return os.path.join(output_dir, output_file_name)
 
 
 def export_engine(build_config: BuildConfig):
@@ -67,22 +72,16 @@ def export_engine(build_config: BuildConfig):
     output_dir = get_output_dir(build_config)
     build_config.output_dir = output_dir
     command.extend(["--output_dir", output_dir])
-    command.extend(["--gemm_plugin", build_config.dtype])
-    command.extend(["--gpt_attention_plugin", build_config.dtype])
+    command.extend(["--gemm_plugin", DTYPE_MAPPING[build_config.dtype]])
+    command.extend(
+        ["--gpt_attention_plugin", DTYPE_MAPPING[build_config.dtype]])
 
     command.extend(["--max_batch_size", str(build_config.max_batch_size)])
     command.extend(["--max_input_len", str(build_config.max_input_len)])
-    if tllm_version == "0.10.0":
-        command.extend(["--max_output_len", str(build_config.max_output_len)])
-    elif tllm_version == "0.13.0":
-        command.extend([
-            "--max_seq_len",
-            str(build_config.max_input_len + build_config.max_output_len)
-        ])
-    else:
-        raise RuntimeError(f"unsupported tensorrt_llm version: {tllm_version}")
-    if build_config.max_num_tokens == -1:
-        build_config.max_num_tokens = build_config.max_batch_size * build_config.max_input_len
+    command.extend([
+        "--max_seq_len",
+        str(build_config.max_input_len + build_config.max_output_len)
+    ])
     command.extend(["--max_num_tokens", str(build_config.max_num_tokens)])
     if build_config.use_prompt_cache:
         command.extend(["--use_paged_context_fmha", "enable"])

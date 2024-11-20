@@ -1,12 +1,11 @@
 import sys
-
-from tllm.args import get_args
-from tllm.build_helper import export
+from args import get_args
+from build_helper import export
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: python main.py test.yml")
+        print("Usage: python main.py export.yml")
         exit(1)
     args = get_args(sys.argv[1])
 

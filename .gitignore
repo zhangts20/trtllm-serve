@@ -4,4 +4,3 @@ __pycache__
 !base.yml
 model.cache
 build
-test_scripts

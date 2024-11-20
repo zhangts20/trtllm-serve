@@ -4,7 +4,9 @@
 #include <thread>
 #include <vector>
 
+#include "cxxopts.hpp"
 #include "nlohmann/json.hpp"
+#include "tensorrt_llm/common/logger.h"
 #include "tensorrt_llm/executor/executor.h"
 #include "tensorrt_llm/plugins/api/tllmPlugin.h"
 
@@ -35,6 +37,7 @@ void newRequests(std::vector<tle::Request> &requests) {
         /* beamSearchDiversityRate =*/std::nullopt,
         /* repetitionPenalty =*/std::nullopt,
         /* presencePenalty =*/std::nullopt,
+        /* frequencyPenalty =*/std::nullopt,
         /* lengthPenalty =*/std::nullopt,
         /* earlyStopping =*/std::nullopt,
         /* noRepeatNgramSize =*/std::nullopt);
@@ -93,7 +96,7 @@ void setValue(tle::ExecutorConfig &executor_config,
 
     json config;
     config_file >> config;
-    // read value from config
+    // Read value from config
     tle::SizeType32 max_beam_width = config["build_config"]["max_beam_width"];
     tle::SizeType32 max_batch_size = config["build_config"]["max_batch_size"];
     tle::SizeType32 max_num_tokens = config["build_config"]["max_num_tokens"];
@@ -103,6 +106,46 @@ void setValue(tle::ExecutorConfig &executor_config,
 }
 
 int main(int argc, char **argv, char **envp) {
+    // clang-format off
+    cxxopts::Options options("MAIN", "A cpp inference of TensorRT-LLM.");
+    options.add_options()("help", "Print help");
+    options.add_options()("model_dir", "The input engine directory.", cxxopts::value<std::string>());
+    options.add_options()("log_level", "The log level.", cxxopts::value<std::string>()->default_value("info"));
+    // clang-format on
+    auto args = options.parse(argc, argv);
+
+    if (args.count("help")) {
+        std::cout << options.help() << std::endl;
+        return 0;
+    }
+
+    if (!args.count("model_dir")) {
+        std::cout << "The model dir is not given." << std::endl;
+        return 1;
+    }
+    fs::path engine_dir = args["model_dir"].as<std::string>();
+    if (!fs::exists(engine_dir)) {
+        std::cout << "The model dir does not exist." << std::endl;
+        return 1;
+    }
+
+    auto logger = tlc::Logger::getLogger();
+    auto const log_level = args["log_level"].as<std::string>();
+    if (log_level == "trace") {
+        logger->setLevel(tlc::Logger::TRACE);
+    } else if (log_level == "debug") {
+        logger->setLevel(tlc::Logger::DEBUG);
+    } else if (log_level == "info") {
+        logger->setLevel(tlc::Logger::INFO);
+    } else if (log_level == "warning") {
+        logger->setLevel(tlc::Logger::WARNING);
+    } else if (log_level == "error") {
+        logger->setLevel(tlc::Logger::ERROR);
+    } else {
+        std::cout << "Unexpected log level: " + log_level << std::endl;
+        return 1;
+    }
+
     initTrtLlmPlugins();
 
 #ifdef DEBUG_ENV
@@ -112,7 +155,7 @@ int main(int argc, char **argv, char **envp) {
     }
 #endif
 
-    // print tensor parallel info
+    // Print tensor parallel info
     const char *world_rank_ = std::getenv("OMPI_COMM_WORLD_RANK");
     int world_rank = 0;
     if (world_rank_ != nullptr) {
@@ -125,10 +168,10 @@ int main(int argc, char **argv, char **envp) {
     }
     std::cout << "Process " << world_rank << " of " << world_size << std::endl;
 
-    static fs::path ENGINE_DIR =
-        "/data/models/llama2-7b-tp4-fp-wcache";
+    static fs::path ENGINE_DIR = "/data/zhangtaoshan/models/llm/trtllm_0140/"
+                                 "llama2-7b-tp1-float16-wcache";
     tle::ExecutorConfig executor_config;
-    setValue(executor_config, ENGINE_DIR);
+    setValue(executor_config, engine_dir);
 
     tle::SchedulerConfig scheduler_config(
         /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::
@@ -144,7 +187,8 @@ int main(int argc, char **argv, char **envp) {
         /* sinkTokenLength =*/std::nullopt,
         /* freeGpuMemoryFraction =*/std::nullopt,
         /* hostCacheSize =*/std::nullopt,
-        /* onboardBlocks =*/true);
+        /* onboardBlocks =*/true,
+        /* crossKvCacheFraction =*/std::nullopt);
     executor_config.setKvCacheConfig(kv_cache_config);
 
     executor_config.setEnableChunkedContext(/* enableChunkedContext =*/false);
@@ -211,12 +255,16 @@ int main(int argc, char **argv, char **envp) {
     executor_config.setMaxSeqIdleMicroseconds(
         /* maxSeqIdleMicroseconds =*/180000000);
 
+    tle::SpeculativeDecodingConfig speculative_decoding_config(
+        /* fastLogits =*/false);
+    executor_config.setSpecDecConfig(speculative_decoding_config);
+
     tle::Executor executor = tle::Executor(
         /* modelPath =*/ENGINE_DIR,
         /* modelType =*/tle::ModelType::kDECODER_ONLY,
         /* executorConfig =*/executor_config);
 
-    // initialize requests
+    // Initialize requests
     std::vector<tle::Request> requests;
     newRequests(requests);
     std::vector<tle::IdType> request_ids = addRequests(executor, requests);
@@ -224,17 +272,17 @@ int main(int argc, char **argv, char **envp) {
     std::chrono::milliseconds ms(5000);
     tle::SizeType32 numFinished{0};
     while (numFinished < request_ids.size()) {
-        // get results
+        // Get results
         std::vector<tle::Response> responses =
             executor.awaitResponses(/* timeout =*/ms);
-        // loop for each response, if response is finished, print
+        // Loop for each response, if response is finished, print
         for (tle::Response response : responses) {
             if (response.hasError()) {
                 printf("Error: %s\n",
                        std::to_string(response.getRequestId()).c_str());
             } else {
                 tle::Result result = response.getResult();
-                // beam width is 0
+                // Set beam width to 0
                 tle::VecTokens output_tokens = result.outputTokenIds.at(0);
                 printf("Output tokens: %s\n",
                        tlc::vec2str(output_tokens).c_str());

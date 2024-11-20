@@ -8,18 +8,18 @@ from dataclasses import dataclass
 class BuildConfig:
     # The input model directory
     model_dir: str
-    # The temp model directory to save checkpoint, default is to add -temp to input path
+    # The temp model directory to save checkpoint, default is to add -temp to the input name in output directory
     temp_dir: str = None
     # The output directory, the recommended setting is None to get formatted output name
     output_dir: str = None
-    # The model type, default is llama
+    # The model type, default is llama, the convert script is determined by examples/${build_type}/convert_checkpoint.py
     model_type: str = "llama"
-    # Whether remove temp directory, default is false
-    remove_temp_dir: bool = False
+    # Whether remove temp directory, default is true
+    remove_temp_dir: bool = True
     # The tensor parallel size of generated engines
     tp_size: int = 1
-    # The data type of generated engines, choices is ["fp", "f8", "w4", "w8", "a8"]
-    dtype: str = "float16"
+    # The data type of generated engines, choices is ["fp", "bf", "f8", "w4", "w8", "a8"]
+    dtype: str = "fp"
     # The max batch size of generated engines
     max_batch_size: int = 32
     # The max input length of generated engines

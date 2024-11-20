@@ -1,3 +1,6 @@
 [submodule "cpp_scripts/3rdparty/json"]
 	path = cpp_scripts/3rdparty/json
 	url = https://github.com/nlohmann/json
+[submodule "cpp_scripts/3rdparty/cxxopts"]
+	path = cpp_scripts/3rdparty/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
