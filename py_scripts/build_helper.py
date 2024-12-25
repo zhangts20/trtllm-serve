@@ -7,7 +7,7 @@ tllm_version = tensorrt_llm.__version__
 
 from args import BuildConfig
 
-TRTLLM_ROOT = os.getenv("TRTLLM_ROOT", "/usr/src/TensorRT-LLM/examples")
+TRTLLM_ROOT = os.getenv("TRTLLM_ROOT", "../../TensorRT-LLM/examples")
 
 DTYPE_MAPPING = {
     "fp": "float16",
@@ -54,7 +54,7 @@ def get_output_dir(build_config: BuildConfig):
     cache_str = "wcache" if build_config.use_prompt_cache else "ocache"
     output_file_name = f"{input_file_name}-tp{build_config.tp_size}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
 
-    dir_name = "trtllm_" + tllm_version.replace(".", "")
+    dir_name = "trtllm_" + tllm_version
     output_dir = os.path.join(os.path.dirname(build_config.model_dir),
                               dir_name)
     if not os.path.exists(output_dir):
@@ -83,6 +83,9 @@ def export_engine(build_config: BuildConfig):
         str(build_config.max_input_len + build_config.max_output_len)
     ])
     command.extend(["--max_num_tokens", str(build_config.max_num_tokens)])
+
+    command.extend(["--gemm_plugin", "auto"])
+    # Enable KV Cache reuse
     if build_config.use_prompt_cache:
         command.extend(["--use_paged_context_fmha", "enable"])
 

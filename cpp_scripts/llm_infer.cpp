@@ -23,7 +23,8 @@ void newRequests(std::vector<tle::Request> &requests) {
         /* returnContextLogits =*/false,
         /* returnGenerationLogits =*/false,
         /* excludeInputFromOutput =*/false,
-        /* returnEncoderOutput =*/false);
+        /* returnEncoderOutput =*/false,
+        /* returnPerfMetrics =*/false);
     tle::SamplingConfig sampling_config = tle::SamplingConfig(
         /* beamWidth =*/1,
         /* topK =*/std::nullopt,
@@ -40,7 +41,8 @@ void newRequests(std::vector<tle::Request> &requests) {
         /* frequencyPenalty =*/std::nullopt,
         /* lengthPenalty =*/std::nullopt,
         /* earlyStopping =*/std::nullopt,
-        /* noRepeatNgramSize =*/std::nullopt);
+        /* noRepeatNgramSize =*/std::nullopt,
+        /* numReturnSequences =*/std::nullopt);
 
     for (size_t i = 0; i < 8; ++i) {
         requests.push_back(tle::Request(
@@ -57,8 +59,10 @@ void newRequests(std::vector<tle::Request> &requests) {
             /* embeddingBias =*/std::nullopt,
             /* externalDraftTokensConfig =*/std::nullopt,
             /* pTuningConfig =*/std::nullopt,
+            /* mRopeConfig =*/std::nullopt,
             /* loraConfig =*/std::nullopt,
             /* lookaheadConfig =*/std::nullopt,
+            /* kvCacheRetentionConfig =*/std::nullopt,
             /* logitsPostProcessorName =*/std::nullopt,
             /* encoderInputTokenIds =*/std::nullopt,
             /* clientId =*/std::nullopt,
@@ -68,7 +72,12 @@ void newRequests(std::vector<tle::Request> &requests) {
             /* contextPhaseParams =*/std::nullopt,
             /* encoderInputFeatures =*/std::nullopt,
             /* encoderOutputLength =*/std::nullopt,
-            /* numReturnSequences =*/1));
+            /* crossAttentionMask =*/std::nullopt,
+            /* numReturnSequences =*/1,
+            /* eagleConfig =*/std::nullopt,
+            /* skipCrossAttnBlocks =*/std::nullopt,
+            /* guideDecodingParams =*/std::nullopt,
+            /* allottedTimeMs =*/std::nullopt));
     }
 }
 
@@ -103,6 +112,43 @@ void setValue(tle::ExecutorConfig &executor_config,
     executor_config.setMaxBeamWidth(max_beam_width);
     executor_config.setMaxBatchSize(max_batch_size);
     executor_config.setMaxNumTokens(max_num_tokens);
+}
+
+tle::SchedulerConfig getSchedulerConfig() {
+    tle::DynamicBatchConfig dynamic_batch_config = tle::DynamicBatchConfig(
+        /* enableBatchSizeTuning =*/false,
+        /* enableMaxNumTokensTuning =*/false,
+        /* dynamicBatchMovingAverageWindow =*/
+        tle::DynamicBatchConfig::kDefaultDynamicBatchMovingAverageWindow,
+        /* batchSizeTable =*/tle::DynamicBatchConfig::kDefaultBatchSizeTable);
+
+    // clang-format off
+    tle::SchedulerConfig scheduler_config(
+    // kMAX_UTILIZATION / kGUARANTEED_NO_EVICT / kSTATIC_BATCH
+    /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::kGUARANTEED_NO_EVICT,
+    // kFIRST_COME_FIRST_SERVED / kEQUAL_PROGRESS
+    /* contextChunkingPolicy =*/tle::ContextChunkingPolicy::kFIRST_COME_FIRST_SERVED,
+    /* dynamicBatchConfig =*/dynamic_batch_config);
+    // clang-format on
+
+    return scheduler_config;
+}
+
+tle::KvCacheConfig getKvCacheConfig() {
+    tle::KvCacheConfig kv_cache_config(
+        /* enableBlockReuse =*/false,
+        /* maxTokens =*/std::nullopt,
+        /* maxAttentionWindowVec =*/std::nullopt,
+        /* sinkTokenLength =*/std::nullopt,
+        /* freeGpuMemoryFraction =*/std::nullopt,
+        /* hostCacheSize =*/std::nullopt,
+        /* onboardBlocks =*/true,
+        /* crossKvCacheFraction =*/std::nullopt,
+        /* secondaryOffloadMinPriority =*/std::nullopt,
+        /* eventBufferMaxSize =*/0,
+        /* runtimeDefaults =*/std::nullopt);
+
+    return kv_cache_config;
 }
 
 int main(int argc, char **argv, char **envp) {
@@ -168,35 +214,19 @@ int main(int argc, char **argv, char **envp) {
     }
     std::cout << "Process " << world_rank << " of " << world_size << std::endl;
 
-    static fs::path ENGINE_DIR = "/data/zhangtaoshan/models/llm/trtllm_0140/"
-                                 "llama2-7b-tp1-float16-wcache";
     tle::ExecutorConfig executor_config;
     setValue(executor_config, engine_dir);
 
-    tle::SchedulerConfig scheduler_config(
-        /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::
-            kGUARANTEED_NO_EVICT,
-        /* contextChunkingPolicy =*/tle::ContextChunkingPolicy::
-            kFIRST_COME_FIRST_SERVED);
-    executor_config.setSchedulerConfig(scheduler_config);
-
-    tle::KvCacheConfig kv_cache_config(
-        /* enableBlockReuse =*/false,
-        /* maxTokens =*/std::nullopt,
-        /* maxAttentionWindowVec =*/std::nullopt,
-        /* sinkTokenLength =*/std::nullopt,
-        /* freeGpuMemoryFraction =*/std::nullopt,
-        /* hostCacheSize =*/std::nullopt,
-        /* onboardBlocks =*/true,
-        /* crossKvCacheFraction =*/std::nullopt);
-    executor_config.setKvCacheConfig(kv_cache_config);
-
+    executor_config.setSchedulerConfig(getSchedulerConfig());
+    executor_config.setKvCacheConfig(getKvCacheConfig());
     executor_config.setEnableChunkedContext(/* enableChunkedContext =*/false);
     executor_config.setNormalizeLogProbs(/* normalizeLogProbs =*/false);
     executor_config.setIterStatsMaxIterations(
-        /* iterStatsMaxIterations =*/tle::kDefaultIterStatsMaxIterations);
+        /* iterStatsMaxIterations =*/tle::ExecutorConfig::
+            kDefaultIterStatsMaxIterations);
     executor_config.setRequestStatsMaxIterations(
-        /* requestStatsMaxIterations =*/tle::kDefaultRequestStatsMaxIterations);
+        /* requestStatsMaxIterations =*/tle::ExecutorConfig::
+            kDefaultRequestStatsMaxIterations);
     executor_config.setBatchingType(
         /* batchingType =*/tle::BatchingType::kINFLIGHT);
 
@@ -231,7 +261,8 @@ int main(int argc, char **argv, char **envp) {
     tle::DecodingConfig decoding_config(
         /* decodingMode =*/std::nullopt,
         /* lookaheadDecodingConfig =*/std::nullopt,
-        /* medusaChoices =*/std::nullopt);
+        /* medusaChoices =*/std::nullopt,
+        /* EagleConfig =*/std::nullopt);
     executor_config.setDecodingConfig(decoding_config);
 
     executor_config.setGpuWeightsPercent(/* gpuWeightsPercent =*/1);
@@ -239,7 +270,9 @@ int main(int argc, char **argv, char **envp) {
 
     tle::ExtendedRuntimePerfKnobConfig extended_runtime_perf_knob_config(
         /* multiBlockMode =*/true,
-        /* enableContextFMHAFP32Acc =*/false);
+        /* enableContextFMHAFP32Acc =*/false,
+        /* cudaGraphMode */ false,
+        /* cudaGraphCacheSize =*/0);
     executor_config.setExtendedRuntimePerfKnobConfig(
         extended_runtime_perf_knob_config);
 
@@ -259,8 +292,15 @@ int main(int argc, char **argv, char **envp) {
         /* fastLogits =*/false);
     executor_config.setSpecDecConfig(speculative_decoding_config);
 
+    tle::GuidedDecodingConfig guided_decoding_config(
+        /* backend =*/tle::GuidedDecodingConfig::GuidedDecodingBackend::
+            kXGRAMMAR,
+        /* encodedVocab =*/std::nullopt,
+        /* tokenizerStr =*/std::nullopt,
+        /* stopTokenIds =*/std::nullopt);
+
     tle::Executor executor = tle::Executor(
-        /* modelPath =*/ENGINE_DIR,
+        /* modelPath =*/engine_dir,
         /* modelType =*/tle::ModelType::kDECODER_ONLY,
         /* executorConfig =*/executor_config);
 
