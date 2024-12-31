@@ -18,6 +18,8 @@ class BuildConfig:
     remove_temp_dir: bool = True
     # The tensor parallel size of generated engines
     tp_size: int = 1
+    # The pipeline parallel size of generated engines
+    pp_size: int = 1
     # The data type of generated engines, choices is ["fp", "bf", "f8", "w4", "w8", "a8"]
     dtype: str = "fp"
     # The max batch size of generated engines

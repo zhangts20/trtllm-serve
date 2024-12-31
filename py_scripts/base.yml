@@ -3,6 +3,7 @@ output_dir: None
 model_type: "llama"
 remove_temp_dir: true
 tp_size: 4
+pp_size: 1
 dtype: "bf"
 max_batch_size: 128
 max_input_len: 2048

@@ -5,7 +5,7 @@ import tensorrt_llm
 
 tllm_version = tensorrt_llm.__version__
 
-from args import BuildConfig
+from .args import BuildConfig
 
 TRTLLM_ROOT = os.getenv("TRTLLM_ROOT", "../../TensorRT-LLM/examples")
 
@@ -30,7 +30,11 @@ def convert_checkpoint(build_config: BuildConfig):
                      "convert_checkpoint.py")
     ]
     command.extend(["--model_dir", build_config.model_dir])
-    command.extend(["--tp_size", str(build_config.tp_size), "--pp_size", "1"])
+    command.extend([
+        "--tp_size",
+        str(build_config.tp_size), "--pp_size",
+        str(build_config.pp_size)
+    ])
     command.extend(["--dtype", DTYPE_MAPPING[build_config.dtype]])
     temp_dir = get_temp_dir(build_config.temp_dir, build_config.model_dir)
     build_config.temp_dir = temp_dir
@@ -50,9 +54,9 @@ def get_output_dir(build_config: BuildConfig):
         return build_config.output_dir
 
     input_file_name = os.path.basename(build_config.model_dir)
-    # name-tpN-fp/bf/f8/w4/w8/a8-wcache/ocache
+    # name-tpN-ppN-fp/bf/f8/w4/w8/a8-wcache/ocache
     cache_str = "wcache" if build_config.use_prompt_cache else "ocache"
-    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
+    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-pp{build_config.pp_size}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
 
     dir_name = "trtllm_" + tllm_version
     output_dir = os.path.join(os.path.dirname(build_config.model_dir),
