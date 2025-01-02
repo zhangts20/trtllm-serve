@@ -12,17 +12,14 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     cxxopts::ParseResult args = options.parse(argc, argv);
     // Check
     if (args.count("help")) {
-        std::cerr << options.help() << std::endl;
-        exit(1);
+        LOG_ERROR(options.help());
     }
     if (!args.count("model_dir")) {
-        std::cerr << "The model dir is not given." << std::endl;
-        exit(1);
+        LOG_ERROR("The model dir is not given.\n");
     }
     fs::path engine_dir = args["model_dir"].as<std::string>();
     if (!fs::exists(engine_dir)) {
-        std::cerr << "The model dir does not exist." << std::endl;
-        exit(1);
+        LOG_ERROR("The model dir does not exist.\n");
     }
     input_config.engine_dir = engine_dir;
     input_config.input_text = args["input_text"].as<std::string>();
@@ -40,8 +37,7 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     } else if (log_level == "error") {
         logger->setLevel(tlc::Logger::ERROR);
     } else {
-        std::cerr << "Unexpected log level: " + log_level << std::endl;
-        exit(1);
+        LOG_ERROR("Unexpected log level: " + log_level);
     }
 
 #ifdef DEBUG_TLLM
@@ -58,14 +54,14 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
 bool InferenceSession::initialize(std::string engine_dir) {
     this->engine_dir = engine_dir;
     if (!tokenizer_session->initialize(engine_dir)) {
-        std::cerr << "Failed to initialize tokenizer session." << std::endl;
+        LOG_ERROR("Failed to initialize tokenizer session.");
         return false;
     }
     // Set value according to config.json
     fs::path config_path = fs::path(engine_dir) / "config.json";
     std::ifstream config_file(config_path);
     if (!config_file.is_open()) {
-        std::cerr << "open config file failed" << std::endl;
+        LOG_ERROR("Open config file failed.");
         return false;
     }
     // Deserialize config.json
@@ -304,8 +300,7 @@ void InferenceSession::inferRequests() {
         // Loop for each response, if response is finished, print
         for (tle::Response response : responses) {
             if (response.hasError()) {
-                printf("Error: %s\n",
-                       std::to_string(response.getRequestId()).c_str());
+                LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
             } else {
                 tle::Result result = response.getResult();
                 // Set beam width to 0
@@ -314,8 +309,8 @@ void InferenceSession::inferRequests() {
                     .first->second.push_back(output_tokens.at(0));
                 tle::FinishReason finish_reason = result.finishReasons.at(0);
                 if (result.isFinal) {
-                    printf("Finish: %lu\n", response.getRequestId());
-                    printf("Finish reason: %d\n", finish_reason);
+                    LOG_INFO("Finish: " + std::to_string(response.getRequestId()));
+                    LOG_INFO("Finish reason: " + FinishReasonMapping.at(finish_reason));
                     numFinished++;
 
                     std::string output_text;
@@ -336,7 +331,7 @@ bool TokenizerSession::initialize(fs::path model_dir) {
     const sp::util::Status status =
         processor->Load((model_dir / "tokenizer.model").c_str());
     if (!status.ok()) {
-        std::cerr << "Failed to load tokenizer.model." << std::endl;
+        LOG_ERROR("Failed to load tokenizer.model.");
         return false;
     }
     return true;
@@ -346,8 +341,7 @@ bool TokenizerSession::encode(std::string input_text,
                               tle::VecTokens &input_ids) {
     const sp::util::Status status = processor->Encode(input_text, &input_ids);
     if (!status.ok()) {
-        std::cerr << "Failed to encode input (" << input_text << ")."
-                  << std::endl;
+        LOG_ERROR("Failed to encode input (" + input_text + ")");
         return false;
     }
     return true;
@@ -357,7 +351,7 @@ bool TokenizerSession::decode(std::string &output_text,
                               tle::VecTokens &output_ids) {
     const sp::util::Status status = processor->Decode(output_ids, &output_text);
     if (!status.ok()) {
-        std::cerr << "Failed to decode output." << std::endl;
+        LOG_ERROR("Failed to decode output.");
         return false;
     }
     return true;

@@ -77,6 +77,7 @@ set_property(
 set(JSON_INCLUDE_DIR "3rdparty/json/include")
 set(CXXOPTS_INCLUDE_DIR "3rdparty/cxxopts/include")
 set(SENTENCEPIECE_INCLUDE_DIR "3rdparty/sentencepiece/src")
+set(CPP_HTTPLIB_INCLUDE_DIR "3rdparty/cpp-httplib")
 include_directories(
     ${TRT_INCLUDE_DIR} 
     ${TRTLLM_INCLUDE_DIR} 
@@ -84,15 +85,39 @@ include_directories(
     ${JSON_INCLUDE_DIR}
     ${CXXOPTS_INCLUDE_DIR} 
     ${SENTENCEPIECE_INCLUDE_DIR}
-    "src"
+    ${CPP_HTTPLIB_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 add_subdirectory("3rdparty/sentencepiece")
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/sentencepiece/src)
 
 find_package(MPI REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 set(SOURCES
-    main.cpp
-    src/session.cpp)
-add_executable(llm ${SOURCES})
-target_link_libraries(llm nvinfer_plugin_tensorrt_llm ${MPI_LIBRARIES} ${TRT_LIB_PATH} sentencepiece)
+    offline_infer.cpp
+    src/session.cpp
+    src/logger.cpp)
+add_executable(offline_infer ${SOURCES})
+target_link_libraries(
+    offline_infer 
+    nvinfer_plugin_tensorrt_llm 
+    ${MPI_LIBRARIES} 
+    ${TRT_LIB_PATH} 
+    sentencepiece
+    ${OPENSSL_SSL_LIBRARY}
+)
+
+set(SOURCES
+    online_infer.cpp
+    src/session.cpp
+    src/logger.cpp)
+add_executable(online_infer ${SOURCES})
+target_link_libraries(
+    online_infer 
+    nvinfer_plugin_tensorrt_llm 
+    ${MPI_LIBRARIES} 
+    ${TRT_LIB_PATH} 
+    sentencepiece
+    OpenSSL::SSL OpenSSL::Crypto 
+)

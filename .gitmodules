@@ -7,3 +7,9 @@
 [submodule "cpp_scripts/3rdparty/sentencepiece"]
 	path = cpp_scripts/3rdparty/sentencepiece
 	url = https://github.com/google/sentencepiece
+[submodule "cpp_scripts/cpp_scripts/3rdparty/cpp-httplib"]
+	path = cpp_scripts/cpp_scripts/3rdparty/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib
+[submodule "cpp_scripts/3rdparty/cpp-httplib"]
+	path = cpp_scripts/3rdparty/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib

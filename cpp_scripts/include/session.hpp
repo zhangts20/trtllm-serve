@@ -1,10 +1,11 @@
-#ifndef _CONFIG_H_
-#define _CONFIG_H_
+#ifndef _SESSION_HPP_
+#define _SESSION_HPP_
 
 #include <filesystem>
 #include <fstream>
 #include <memory>
 
+#include "logger.hpp"
 #include "cxxopts.hpp"
 #include "nlohmann/json.hpp"
 #include "sentencepiece_processor.h"
@@ -22,6 +23,11 @@ namespace tle = tensorrt_llm::executor;
 struct InputConfig {
     std::string engine_dir;
     std::string input_text;
+};
+
+static std::map<tle::FinishReason, std::string> FinishReasonMapping = {
+    {tle::FinishReason::kEND_ID, "end_id"},
+    {tle::FinishReason::kLENGTH, "length"},
 };
 
 InputConfig parseArgs(int argc, char **argv, char **envp);

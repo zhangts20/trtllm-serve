@@ -1,4 +1,4 @@
-#include "src/session.hpp"
+#include "session.hpp"
 
 int main(int argc, char **argv, char **envp) {
     InputConfig input_config = parseArgs(argc, argv, envp);
@@ -15,7 +15,8 @@ int main(int argc, char **argv, char **envp) {
     if (world_size_ != nullptr) {
         world_size = std::stoi(world_size_);
     }
-    std::cout << "Process " << world_rank << " of " << world_size << std::endl;
+    LOG_DEBUG("Process " + std::to_string(world_rank) + " of " +
+              std::to_string(world_size));
     // Initialize InferenceSession
     InferenceSession inference_session;
     inference_session.initialize(input_config.engine_dir);
