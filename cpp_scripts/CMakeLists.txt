@@ -73,12 +73,26 @@ set_property(
     tensorrt_llm
 )
 
+# Add submodule
 set(JSON_INCLUDE_DIR "3rdparty/json/include")
 set(CXXOPTS_INCLUDE_DIR "3rdparty/cxxopts/include")
-include_directories(${TRT_INCLUDE_DIR} ${TRTLLM_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS} 
-                    ${JSON_INCLUDE_DIR} ${CXXOPTS_INCLUDE_DIR})
+set(SENTENCEPIECE_INCLUDE_DIR "3rdparty/sentencepiece/src")
+include_directories(
+    ${TRT_INCLUDE_DIR} 
+    ${TRTLLM_INCLUDE_DIR} 
+    ${CUDA_INCLUDE_DIRS} 
+    ${JSON_INCLUDE_DIR}
+    ${CXXOPTS_INCLUDE_DIR} 
+    ${SENTENCEPIECE_INCLUDE_DIR}
+    "src"
+)
+add_subdirectory("3rdparty/sentencepiece")
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/sentencepiece/src)
 
 find_package(MPI REQUIRED)
 
-add_executable(llm llm_infer.cpp)
-target_link_libraries(llm nvinfer_plugin_tensorrt_llm ${MPI_LIBRARIES} ${TRT_LIB_PATH})
+set(SOURCES
+    main.cpp
+    src/session.cpp)
+add_executable(llm ${SOURCES})
+target_link_libraries(llm nvinfer_plugin_tensorrt_llm ${MPI_LIBRARIES} ${TRT_LIB_PATH} sentencepiece)

@@ -4,3 +4,6 @@
 [submodule "cpp_scripts/3rdparty/cxxopts"]
 	path = cpp_scripts/3rdparty/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
+[submodule "cpp_scripts/3rdparty/sentencepiece"]
+	path = cpp_scripts/3rdparty/sentencepiece
+	url = https://github.com/google/sentencepiece

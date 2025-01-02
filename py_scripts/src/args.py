@@ -20,6 +20,8 @@ class BuildConfig:
     tp_size: int = 1
     # The pipeline parallel size of generated engines
     pp_size: int = 1
+    # The max beam width of generated engines
+    beam_width: int = 1
     # The data type of generated engines, choices is ["fp", "bf", "f8", "w4", "w8", "a8"]
     dtype: str = "fp"
     # The max batch size of generated engines
