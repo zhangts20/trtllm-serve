@@ -56,7 +56,7 @@ def get_output_dir(build_config: BuildConfig):
     input_file_name = os.path.basename(build_config.model_dir)
     # name-tpN-ppN-bwN-fp/bf/f8/w4/w8/a8-wcache/ocache
     cache_str = "wcache" if build_config.use_prompt_cache else "ocache"
-    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-pp{build_config.pp_size}-{build_config.beam_width}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
+    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-pp{build_config.pp_size}-bw{build_config.max_beam_width}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
 
     dir_name = "trtllm_" + tllm_version
     output_dir = os.path.join(os.path.dirname(build_config.model_dir),
@@ -86,6 +86,7 @@ def export_engine(build_config: BuildConfig):
         "--max_seq_len",
         str(build_config.max_input_len + build_config.max_output_len)
     ])
+    command.extend(["--max_beam_width", str(build_config.max_beam_width)])
     command.extend(["--max_num_tokens", str(build_config.max_num_tokens)])
 
     command.extend(["--gemm_plugin", "auto"])

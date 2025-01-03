@@ -1,5 +1,10 @@
 #include "session.hpp"
 
+/// @brief Parse input args
+/// @param argc The number of inputs
+/// @param argv The input contents
+/// @param envp The runtime environment variables
+/// @return The struct of InputConfig
 InputConfig parseArgs(int argc, char **argv, char **envp) {
     InputConfig input_config;
     // clang-format off
@@ -7,6 +12,9 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     options.add_options()("help", "Print help");
     options.add_options()("model_dir", "The input engine directory.", cxxopts::value<std::string>());
     options.add_options()("input_text", "The input text for inference.", cxxopts::value<std::string>()->default_value("What is Deep Learning?"));
+    options.add_options()("max_new_tokens", "The max generated tokens.", cxxopts::value<int>()->default_value("17"));
+    options.add_options()("streaming", "Whether to use streaming inference.", cxxopts::value<bool>()->default_value("false"));
+    options.add_options()("num_beams", "The number of return sequences.", cxxopts::value<int>()->default_value("1"));
     options.add_options()("log_level", "The log level.", cxxopts::value<std::string>()->default_value("info"));
     // clang-format on
     cxxopts::ParseResult args = options.parse(argc, argv);
@@ -23,6 +31,9 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     }
     input_config.engine_dir = engine_dir;
     input_config.input_text = args["input_text"].as<std::string>();
+    input_config.max_new_tokens = args["max_new_tokens"].as<int>();
+    input_config.streaming = args["streaming"].as<bool>();
+    input_config.num_beams = args["num_beams"].as<int>();
     // Set log level
     auto logger = tlc::Logger::getLogger();
     auto const log_level = args["log_level"].as<std::string>();
@@ -51,6 +62,10 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     return input_config;
 }
 
+/// @brief Initialize InferenceSession, including loading weights and
+/// initializing executor
+/// @param engine_dir The directory contains engine file(s) and tokenizer files
+/// @return Return true if initialization is successful; otherwise, return false
 bool InferenceSession::initialize(std::string engine_dir) {
     this->engine_dir = engine_dir;
     if (!tokenizer_session->initialize(engine_dir)) {
@@ -76,11 +91,13 @@ bool InferenceSession::initialize(std::string engine_dir) {
     executor_config->setMaxBatchSize(max_batch_size);
     executor_config->setMaxNumTokens(max_num_tokens);
 
-    initializeExecutorConfig();
+    initializeExecutor();
 
     return true;
 }
 
+/// @brief Initialize SchedulerConfig defined in executor.h
+/// @return The struct SchedulerConfig
 static tle::SchedulerConfig getSchedulerConfig() {
     tle::DynamicBatchConfig dynamic_batch_config = tle::DynamicBatchConfig(
         /* enableBatchSizeTuning =*/false,
@@ -101,6 +118,8 @@ static tle::SchedulerConfig getSchedulerConfig() {
     return scheduler_config;
 }
 
+/// @brief Initialize KvCacheConfig defined in executor.h
+/// @return The struct KvCacheConfig
 static tle::KvCacheConfig getKvCacheConfig() {
     tle::KvCacheConfig kv_cache_config(
         /* enableBlockReuse =*/false,
@@ -118,7 +137,8 @@ static tle::KvCacheConfig getKvCacheConfig() {
     return kv_cache_config;
 }
 
-void InferenceSession::initializeExecutorConfig() {
+/// @brief Initialize executor
+void InferenceSession::initializeExecutor() {
     executor_config->setSchedulerConfig(getSchedulerConfig());
     executor_config->setKvCacheConfig(getKvCacheConfig());
     executor_config->setEnableChunkedContext(/* enableChunkedContext =*/false);
@@ -167,7 +187,7 @@ void InferenceSession::initializeExecutorConfig() {
         /* EagleConfig =*/std::nullopt);
     executor_config->setDecodingConfig(decoding_config);
 
-    executor_config->setGpuWeightsPercent(/* gpuWeightsPercent =*/1);
+    executor_config->setGpuWeightsPercent(/* gpuWeightsPercent =*/1.0);
     executor_config->setMaxQueueSize(/* maxQueueSize =*/std::nullopt);
 
     tle::ExtendedRuntimePerfKnobConfig extended_runtime_perf_knob_config(
@@ -207,7 +227,14 @@ void InferenceSession::initializeExecutorConfig() {
         /* executorConfig =*/*executor_config);
 }
 
-void InferenceSession::addRequests(std::optional<std::string> input_text) {
+/// @brief Add a new request, and return ids of each request
+/// @param input_text Will be `What is Deep Learning` if not given
+/// @param streaming Whether to do streaming inference
+/// @param max_new_tokens The max generated tokens
+/// @param num_beams The max return sequences
+void InferenceSession::addRequests(std::optional<std::string> input_text,
+                                   bool streaming, int max_new_tokens,
+                                   int num_beams) {
     // Set `What is Deep Learning?` to the default input text
     tle::VecTokens vec_tokens;
     if (input_text) {
@@ -215,17 +242,15 @@ void InferenceSession::addRequests(std::optional<std::string> input_text) {
     } else {
         vec_tokens = {1, 1724, 338, 21784, 29257, 29973};
     }
-    // Set the default max generated tokens is 17
-    tle::SizeType32 max_new_tokens = 17;
     tle::OutputConfig output_config = tle::OutputConfig(
-        /* returnLogProbs =*/false,
+        /* returnLogProbs =*/true,
         /* returnContextLogits =*/false,
         /* returnGenerationLogits =*/false,
         /* excludeInputFromOutput =*/false,
         /* returnEncoderOutput =*/false,
         /* returnPerfMetrics =*/false);
     tle::SamplingConfig sampling_config = tle::SamplingConfig(
-        /* beamWidth =*/1,
+        /* beamWidth =*/num_beams,
         /* topK =*/std::nullopt,
         /* topP =*/std::nullopt,
         /* topPMin =*/std::nullopt,
@@ -242,91 +267,103 @@ void InferenceSession::addRequests(std::optional<std::string> input_text) {
         /* earlyStopping =*/std::nullopt,
         /* noRepeatNgramSize =*/std::nullopt,
         /* numReturnSequences =*/std::nullopt);
-    // Append 8 requests
-    for (size_t i = 0; i < 8; ++i) {
-        requests.push_back(tle::Request(
-            /* inputTokenIds =*/vec_tokens,
-            /* maxTokens =*/max_new_tokens + i,
-            /* streaming =*/true,
-            /* samplingConfig =*/sampling_config,
-            /* outputConfig =*/output_config,
-            /* endId =*/std::nullopt,
-            /* padId =*/std::nullopt,
-            /* positionIds =*/std::nullopt,
-            /* badWords =*/std::nullopt,
-            /* stopWords =*/std::nullopt,
-            /* embeddingBias =*/std::nullopt,
-            /* externalDraftTokensConfig =*/std::nullopt,
-            /* pTuningConfig =*/std::nullopt,
-            /* mRopeConfig =*/std::nullopt,
-            /* loraConfig =*/std::nullopt,
-            /* lookaheadConfig =*/std::nullopt,
-            /* kvCacheRetentionConfig =*/std::nullopt,
-            /* logitsPostProcessorName =*/std::nullopt,
-            /* encoderInputTokenIds =*/std::nullopt,
-            /* clientId =*/std::nullopt,
-            /* returnAllGeneratedTokens =*/false,
-            /* priority =*/tle::Request::kDefaultPriority,
-            /* type =*/tle::RequestType::REQUEST_TYPE_CONTEXT_AND_GENERATION,
-            /* contextPhaseParams =*/std::nullopt,
-            /* encoderInputFeatures =*/std::nullopt,
-            /* encoderOutputLength =*/std::nullopt,
-            /* crossAttentionMask =*/std::nullopt,
-            /* numReturnSequences =*/1,
-            /* eagleConfig =*/std::nullopt,
-            /* skipCrossAttnBlocks =*/std::nullopt,
-            /* guideDecodingParams =*/std::nullopt,
-            /* allottedTimeMs =*/std::nullopt));
-    }
+    tle::Request request = tle::Request(
+        /* inputTokenIds =*/vec_tokens,
+        /* maxTokens =*/max_new_tokens,
+        /* streaming =*/streaming,
+        /* samplingConfig =*/sampling_config,
+        /* outputConfig =*/output_config,
+        /* endId =*/std::nullopt,
+        /* padId =*/std::nullopt,
+        /* positionIds =*/std::nullopt,
+        /* badWords =*/std::nullopt,
+        /* stopWords =*/std::nullopt,
+        /* embeddingBias =*/std::nullopt,
+        /* externalDraftTokensConfig =*/std::nullopt,
+        /* pTuningConfig =*/std::nullopt,
+        /* mRopeConfig =*/std::nullopt,
+        /* loraConfig =*/std::nullopt,
+        /* lookaheadConfig =*/std::nullopt,
+        /* kvCacheRetentionConfig =*/std::nullopt,
+        /* logitsPostProcessorName =*/std::nullopt,
+        /* encoderInputTokenIds =*/std::nullopt,
+        /* clientId =*/std::nullopt,
+        /* returnAllGeneratedTokens =*/true,
+        /* priority =*/tle::Request::kDefaultPriority,
+        /* type =*/tle::RequestType::REQUEST_TYPE_CONTEXT_AND_GENERATION,
+        /* contextPhaseParams =*/std::nullopt,
+        /* encoderInputFeatures =*/std::nullopt,
+        /* encoderOutputLength =*/std::nullopt,
+        /* crossAttentionMask =*/std::nullopt,
+        /* numReturnSequences =*/1,
+        /* eagleConfig =*/std::nullopt,
+        /* skipCrossAttnBlocks =*/std::nullopt,
+        /* guideDecodingParams =*/std::nullopt,
+        /* allottedTimeMs =*/std::nullopt);
     // Add requests
-    for (size_t i = 0; i < requests.size(); ++i) {
-        if (executor->canEnqueueRequests()) {
-            request_ids.push_back(
-                executor->enqueueRequest(std::move(requests[i])));
-        }
+    if (executor->canEnqueueRequests()) {
+        request_ids.push_back(executor->enqueueRequest(std::move(request)));
     }
 }
 
+/// @brief Do inference and print streaming or no-streaming outputs
 void InferenceSession::inferRequests() {
     std::chrono::milliseconds ms(5000);
     tle::SizeType32 numFinished{0};
-    // To store output token ids and output texts
-    std::map<tle::IdType, tle::VecTokens> output_tokens_mapping;
-    std::vector<std::string> output_texts;
+    // To store output texts
+    std::map<tle::IdType, std::vector<std::string>> output_texts_mapping;
     while (numFinished < request_ids.size()) {
         // Get results
         std::vector<tle::Response> responses =
             executor->awaitResponses(/* timeout =*/ms);
-        // Loop for each response, if response is finished, print
+        // Loop for each response
         for (tle::Response response : responses) {
             if (response.hasError()) {
-                LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
+                LOG_ERROR("Response error: " +
+                          std::to_string(response.getRequestId()));
             } else {
                 tle::Result result = response.getResult();
-                // Set beam width to 0
-                tle::VecTokens output_tokens = result.outputTokenIds.at(0);
-                output_tokens_mapping.try_emplace(response.getRequestId())
-                    .first->second.push_back(output_tokens.at(0));
-                tle::FinishReason finish_reason = result.finishReasons.at(0);
                 if (result.isFinal) {
-                    LOG_INFO("Finish: " + std::to_string(response.getRequestId()));
-                    LOG_INFO("Finish reason: " + FinishReasonMapping.at(finish_reason));
                     numFinished++;
-
-                    std::string output_text;
-                    tokenizer_session->decode(
-                        output_text,
-                        output_tokens_mapping.at(response.getRequestId()));
-                    output_texts.emplace_back(output_text);
+                    // Loop for each beam
+                    for (int b = 0; b < result.outputTokenIds.size(); ++b) {
+                        std::string output_text;
+                        tokenizer_session->decode(output_text,
+                                                  result.outputTokenIds.at(b));
+                        output_texts_mapping
+                            .try_emplace(response.getRequestId())
+                            .first->second.push_back(output_text);
+                    }
+                } else {
+                    // Loop for each beam
+                    std::vector<tle::IdType> output_tokens;
+                    std::vector<tle::FloatType> output_logprobs;
+                    json streaming_data;
+                    for (int b = 0; b < result.outputTokenIds.size(); ++b) {
+                        size_t output_len = result.outputTokenIds.at(b).size();
+                        output_tokens.emplace_back(
+                            result.outputTokenIds.at(b)[output_len - 1]);
+                        output_logprobs.emplace_back(
+                            result.logProbs.value().at(b)[output_len - 1]);
+                    }
+                    streaming_data["output tokens"] = output_tokens;
+                    streaming_data["output logprobs"] = output_logprobs;
+                    std::cout << streaming_data.dump() << std::endl;
                 }
             }
         }
     }
-    for (const std::string output_text : output_texts) {
-        printf("%s", output_text.c_str());
+    for (const auto &[request_id, output_texts] : output_texts_mapping) {
+        printf("Finish request id: %lu\n", request_id);
+        for (int i = 0; i < output_texts.size(); ++i) {
+            printf("[Beam %d] %s\n", i, output_texts[i].c_str());
+        }
     }
 }
 
+/// @brief Initialize session of tokenizer
+/// @param model_dir The directory contains tokenizer.model
+/// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::initialize(fs::path model_dir) {
     const sp::util::Status status =
         processor->Load((model_dir / "tokenizer.model").c_str());
@@ -337,6 +374,10 @@ bool TokenizerSession::initialize(fs::path model_dir) {
     return true;
 }
 
+/// @brief Encode input text
+/// @param input_text The input text to be encoded
+/// @param input_ids The result of encoded input text
+/// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::encode(std::string input_text,
                               tle::VecTokens &input_ids) {
     const sp::util::Status status = processor->Encode(input_text, &input_ids);
@@ -347,6 +388,10 @@ bool TokenizerSession::encode(std::string input_text,
     return true;
 }
 
+/// @brief Decode output text
+/// @param output_text The output text to be decoed
+/// @param output_ids The result out decoded output text
+/// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::decode(std::string &output_text,
                               tle::VecTokens &output_ids) {
     const sp::util::Status status = processor->Decode(output_ids, &output_text);

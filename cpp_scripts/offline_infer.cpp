@@ -20,6 +20,8 @@ int main(int argc, char **argv, char **envp) {
     // Initialize InferenceSession
     InferenceSession inference_session;
     inference_session.initialize(input_config.engine_dir);
-    inference_session.addRequests(input_config.input_text);
+    inference_session.addRequests(
+        input_config.input_text, input_config.streaming,
+        input_config.max_new_tokens, input_config.num_beams);
     inference_session.inferRequests();
 }

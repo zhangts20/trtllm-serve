@@ -5,8 +5,8 @@
 #include <fstream>
 #include <memory>
 
-#include "logger.hpp"
 #include "cxxopts.hpp"
+#include "logger.hpp"
 #include "nlohmann/json.hpp"
 #include "sentencepiece_processor.h"
 #include "tensorrt_llm/common/logger.h"
@@ -23,6 +23,9 @@ namespace tle = tensorrt_llm::executor;
 struct InputConfig {
     std::string engine_dir;
     std::string input_text;
+    int max_new_tokens;
+    bool streaming;
+    int num_beams;
 };
 
 static std::map<tle::FinishReason, std::string> FinishReasonMapping = {
@@ -54,10 +57,12 @@ class InferenceSession {
           tokenizer_session(std::make_unique<TokenizerSession>()) {}
     // Initialize inference session
     bool initialize(std::string engine_dir);
-    // Initialize ExecutorConfig
-    void initializeExecutorConfig();
+    // Initialize Executor
+    void initializeExecutor();
     // Initialize requests
-    void addRequests(std::optional<std::string> input_text = std::nullopt);
+    void addRequests(std::optional<std::string> input_text = std::nullopt,
+                     bool streaming = true, int max_new_tokens = 17,
+                     int num_beams = 1);
     // Do inference
     void inferRequests();
 };
