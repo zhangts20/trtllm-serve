@@ -4,7 +4,7 @@ Ref: https://github.com/NVIDIA/TensorRT-LLM/tree/main
 # Usage Guide
 ## Build Engine
 ```shell
-# copy your own yml first
+# copy your own yml first, please refer to ## Yaml Parser
 copy base.py llama2-7b.yml
 # use convert_checkpoint.py and trtllm-build to export engine
 cd py_scripts
@@ -14,11 +14,20 @@ python export.py llama2-7b.yml
 ```shell
 # build
 cd cpp_scripts
-cmake .. -DTRT_ROOT=/usr/local/tensorrt
-make -j 64
-# run
-mpirun -n 4 build/llm --model_dir /models/llama2-7b-tp2-pp2-float16-wcache
+cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
+# run --help to get the optional input args, and use mpirun -n N (N=tp*pp) to run
+offline_infer --help
 ```
+
+| args | type | default | notes |
+| :---- | :---- | :---- | :---- |
+| model_dir | string | None | The input engine directory |
+| input_text | string | What is Deep Learning? | The input text for inference |
+| max_new_tokens | int | 17 | The max generated tokens |
+| streaming | bool | False | Whether to use streaming inference |
+| num_beams | int | 1 | The number of return sequences |
+| log_level | string | info | The log level, choices=['debug', 'info', 'warning', 'error'] |
+
 ## Yaml Parser
 ```yaml
 # The input directory
@@ -39,6 +48,8 @@ dtype: "bf"
 max_batch_size: 128
 # The max input length of generated engine
 max_input_len: 2048
+# The max beam width of generated engine
+max_beam_width: 1
 # The max output length of generated engine
 max_output_len: 1024
 # The max num tokens of generated engine

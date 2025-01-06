@@ -20,7 +20,8 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     cxxopts::ParseResult args = options.parse(argc, argv);
     // Check
     if (args.count("help")) {
-        LOG_ERROR(options.help());
+        LOG_INFO(options.help());
+       exit(1); 
     }
     if (!args.count("model_dir")) {
         LOG_ERROR("The model dir is not given.\n");
