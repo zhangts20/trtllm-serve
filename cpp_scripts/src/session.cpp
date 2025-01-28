@@ -21,7 +21,7 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
     // Check
     if (args.count("help")) {
         LOG_INFO(options.help());
-       exit(1); 
+        exit(1);
     }
     if (!args.count("model_dir")) {
         LOG_ERROR("The model dir is not given.\n");
@@ -61,6 +61,58 @@ InputConfig parseArgs(int argc, char **argv, char **envp) {
 #endif
 
     return input_config;
+}
+
+InputServerConfig parseServerArgs(int argc, char **argv, char **envp) {
+    InputServerConfig input_server_config;
+    // clang-format off
+    cxxopts::Options options("MAIN", "A cpp inference of TensorRT-LLM.");
+    options.add_options()("help", "Print help");
+    options.add_options()("model_dir", "The input engine directory.", cxxopts::value<std::string>());
+    options.add_options()("port", "The port of serving.", cxxopts::value<int>()->default_value("18001"));
+    options.add_options()("log_level", "The log level.", cxxopts::value<std::string>()->default_value("info"));
+    // clang-format on
+    cxxopts::ParseResult args = options.parse(argc, argv);
+    // Check
+    if (args.count("help")) {
+        LOG_INFO(options.help());
+        exit(1);
+    }
+    if (!args.count("model_dir")) {
+        LOG_ERROR("The model dir is not given.\n");
+    }
+    fs::path engine_dir = args["model_dir"].as<std::string>();
+    if (!fs::exists(engine_dir)) {
+        LOG_ERROR("The model dir does not exist.\n");
+    }
+    input_server_config.engine_dir = engine_dir;
+    input_server_config.port = args["port"].as<int>();
+    // Set log level
+    auto logger = tlc::Logger::getLogger();
+    auto const log_level = args["log_level"].as<std::string>();
+    if (log_level == "trace") {
+        logger->setLevel(tlc::Logger::TRACE);
+    } else if (log_level == "debug") {
+        logger->setLevel(tlc::Logger::DEBUG);
+    } else if (log_level == "info") {
+        logger->setLevel(tlc::Logger::INFO);
+    } else if (log_level == "warning") {
+        logger->setLevel(tlc::Logger::WARNING);
+    } else if (log_level == "error") {
+        logger->setLevel(tlc::Logger::ERROR);
+    } else {
+        LOG_ERROR("Unexpected log level: " + log_level);
+    }
+
+#ifdef DEBUG_TLLM
+    // Whether to print env info
+    for (char **env = envp; *env != 0; env++) {
+        char *thisEnv = *env;
+        printf("%s\n", thisEnv);
+    }
+#endif
+
+    return input_server_config;
 }
 
 /// @brief Initialize InferenceSession, including loading weights and
@@ -145,11 +197,9 @@ void InferenceSession::initializeExecutor() {
     executor_config->setEnableChunkedContext(/* enableChunkedContext =*/false);
     executor_config->setNormalizeLogProbs(/* normalizeLogProbs =*/false);
     executor_config->setIterStatsMaxIterations(
-        /* iterStatsMaxIterations =*/tle::ExecutorConfig::
-            kDefaultIterStatsMaxIterations);
+        /* iterStatsMaxIterations =*/tle::ExecutorConfig::kDefaultIterStatsMaxIterations);
     executor_config->setRequestStatsMaxIterations(
-        /* requestStatsMaxIterations =*/tle::ExecutorConfig::
-            kDefaultRequestStatsMaxIterations);
+        /* requestStatsMaxIterations =*/tle::ExecutorConfig::kDefaultRequestStatsMaxIterations);
     executor_config->setBatchingType(
         /* batchingType =*/tle::BatchingType::kINFLIGHT);
 
@@ -196,8 +246,7 @@ void InferenceSession::initializeExecutor() {
         /* enableContextFMHAFP32Acc =*/false,
         /* cudaGraphMode */ false,
         /* cudaGraphCacheSize =*/0);
-    executor_config->setExtendedRuntimePerfKnobConfig(
-        extended_runtime_perf_knob_config);
+    executor_config->setExtendedRuntimePerfKnobConfig(extended_runtime_perf_knob_config);
 
 #ifdef DEBUG_TLLM
     tle::DebugConfig debug_config(
@@ -216,8 +265,7 @@ void InferenceSession::initializeExecutor() {
     executor_config->setSpecDecConfig(speculative_decoding_config);
 
     tle::GuidedDecodingConfig guided_decoding_config(
-        /* backend =*/tle::GuidedDecodingConfig::GuidedDecodingBackend::
-            kXGRAMMAR,
+        /* backend =*/tle::GuidedDecodingConfig::GuidedDecodingBackend::kXGRAMMAR,
         /* encodedVocab =*/std::nullopt,
         /* tokenizerStr =*/std::nullopt,
         /* stopTokenIds =*/std::nullopt);
@@ -233,8 +281,7 @@ void InferenceSession::initializeExecutor() {
 /// @param streaming Whether to do streaming inference
 /// @param max_new_tokens The max generated tokens
 /// @param num_beams The max return sequences
-void InferenceSession::addRequests(std::optional<std::string> input_text,
-                                   bool streaming, int max_new_tokens,
+void InferenceSession::addRequests(std::optional<std::string> input_text, bool streaming, int max_new_tokens,
                                    int num_beams) {
     // Set `What is Deep Learning?` to the default input text
     tle::VecTokens vec_tokens;
@@ -315,13 +362,11 @@ void InferenceSession::inferRequests() {
     std::map<tle::IdType, std::vector<std::string>> output_texts_mapping;
     while (numFinished < request_ids.size()) {
         // Get results
-        std::vector<tle::Response> responses =
-            executor->awaitResponses(/* timeout =*/ms);
+        std::vector<tle::Response> responses = executor->awaitResponses(/* timeout =*/ms);
         // Loop for each response
         for (tle::Response response : responses) {
             if (response.hasError()) {
-                LOG_ERROR("Response error: " +
-                          std::to_string(response.getRequestId()));
+                LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
             } else {
                 tle::Result result = response.getResult();
                 if (result.isFinal) {
@@ -329,11 +374,8 @@ void InferenceSession::inferRequests() {
                     // Loop for each beam
                     for (int b = 0; b < result.outputTokenIds.size(); ++b) {
                         std::string output_text;
-                        tokenizer_session->decode(output_text,
-                                                  result.outputTokenIds.at(b));
-                        output_texts_mapping
-                            .try_emplace(response.getRequestId())
-                            .first->second.push_back(output_text);
+                        tokenizer_session->decode(output_text, result.outputTokenIds.at(b));
+                        output_texts_mapping.try_emplace(response.getRequestId()).first->second.push_back(output_text);
                     }
                 } else {
                     // Loop for each beam
@@ -342,14 +384,11 @@ void InferenceSession::inferRequests() {
                     json streaming_data;
                     for (int b = 0; b < result.outputTokenIds.size(); ++b) {
                         size_t output_len = result.outputTokenIds.at(b).size();
-                        output_tokens.emplace_back(
-                            result.outputTokenIds.at(b)[output_len - 1]);
-                        output_logprobs.emplace_back(
-                            result.logProbs.value().at(b)[output_len - 1]);
+                        output_tokens.emplace_back(result.outputTokenIds.at(b)[output_len - 1]);
+                        output_logprobs.emplace_back(result.logProbs.value().at(b)[output_len - 1]);
                     }
                     streaming_data["output tokens"] = output_tokens;
                     streaming_data["output logprobs"] = output_logprobs;
-                    std::cout << streaming_data.dump() << std::endl;
                 }
             }
         }
@@ -362,12 +401,51 @@ void InferenceSession::inferRequests() {
     }
 }
 
+std::optional<OutputConfig> InferenceSession::serve() {
+    std::chrono::milliseconds ms(5000);
+    // Get results
+    std::vector<tle::Response> responses = executor->awaitResponses(ms);
+    // Loop for each response
+    for (tle::Response response : responses) {
+        if (response.hasError()) {
+            LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
+        } else {
+            tle::Result result = response.getResult();
+
+            std::vector<std::string> finish_reasons;
+            for (auto finish_reason : result.finishReasons) {
+                if (result.isFinal) {
+                    finish_reasons.emplace_back("length");
+                } else {
+                    finish_reasons.emplace_back(FinishReasonMapping[finish_reason]);
+                }
+            }
+            // To retain four significant figures
+            std::vector<std::vector<float>> output_logprobs;
+            output_logprobs.reserve(result.logProbs.value().size());
+            for (const std::vector<tle::FloatType> &vec_logprobs : result.logProbs.value()) {
+                std::vector<float> inner_logprobs(vec_logprobs.size());
+                std::transform(vec_logprobs.begin(), vec_logprobs.end(), inner_logprobs.begin(),
+                               [](float v) { return std::round(v * 10000.0f) / 10000.0f; });
+                output_logprobs.push_back(std::move(inner_logprobs));
+            }
+
+            return OutputConfig{
+                /* request_id =*/response.getRequestId(),
+                /* output_tokens =*/result.outputTokenIds,
+                /* output_logprobs =*/output_logprobs,
+                /* finish_reason =*/finish_reasons,
+            };
+        }
+    }
+    return std::nullopt;
+}
+
 /// @brief Initialize session of tokenizer
 /// @param model_dir The directory contains tokenizer.model
 /// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::initialize(fs::path model_dir) {
-    const sp::util::Status status =
-        processor->Load((model_dir / "tokenizer.model").c_str());
+    const sp::util::Status status = processor->Load((model_dir / "tokenizer.model").c_str());
     if (!status.ok()) {
         LOG_ERROR("Failed to load tokenizer.model.");
         return false;
@@ -379,8 +457,7 @@ bool TokenizerSession::initialize(fs::path model_dir) {
 /// @param input_text The input text to be encoded
 /// @param input_ids The result of encoded input text
 /// @return Return true if initialization is successful; otherwise, return false
-bool TokenizerSession::encode(std::string input_text,
-                              tle::VecTokens &input_ids) {
+bool TokenizerSession::encode(std::string input_text, tle::VecTokens &input_ids) {
     const sp::util::Status status = processor->Encode(input_text, &input_ids);
     if (!status.ok()) {
         LOG_ERROR("Failed to encode input (" + input_text + ")");
@@ -393,8 +470,7 @@ bool TokenizerSession::encode(std::string input_text,
 /// @param output_text The output text to be decoed
 /// @param output_ids The result out decoded output text
 /// @return Return true if initialization is successful; otherwise, return false
-bool TokenizerSession::decode(std::string &output_text,
-                              tle::VecTokens &output_ids) {
+bool TokenizerSession::decode(std::string &output_text, tle::VecTokens &output_ids) {
     const sp::util::Status status = processor->Decode(output_ids, &output_text);
     if (!status.ok()) {
         LOG_ERROR("Failed to decode output.");

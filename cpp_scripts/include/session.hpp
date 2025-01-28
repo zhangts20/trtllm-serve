@@ -28,12 +28,28 @@ struct InputConfig {
     int num_beams;
 };
 
+struct InputServerConfig {
+    std::string engine_dir;
+    int port;
+};
+
+struct OutputConfig {
+    tle::IdType request_id;
+    std::vector<std::vector<tle::TokenIdType>> output_tokens;
+    std::vector<std::vector<tle::FloatType>> output_logprobs;
+    std::vector<std::string> finish_reason;
+    std::vector<std::string> generated_text;
+};
+
 static std::map<tle::FinishReason, std::string> FinishReasonMapping = {
     {tle::FinishReason::kEND_ID, "end_id"},
     {tle::FinishReason::kLENGTH, "length"},
+    {tle::FinishReason::kNOT_FINISHED, "running"},
 };
 
 InputConfig parseArgs(int argc, char **argv, char **envp);
+
+InputServerConfig parseServerArgs(int argc, char **argv, char **envp);
 
 class TokenizerSession;
 
@@ -65,6 +81,8 @@ class InferenceSession {
                      int num_beams = 1);
     // Do inference
     void inferRequests();
+    // Do inference server
+    std::optional<OutputConfig> serve();
 };
 
 class TokenizerSession {

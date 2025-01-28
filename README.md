@@ -11,6 +11,7 @@ cd py_scripts
 python export.py llama2-7b.yml 
 ```
 ## Execute Engine
+### Offline Inference
 ```shell
 # build
 cd cpp_scripts
@@ -18,7 +19,6 @@ cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
 # run --help to get the optional input args, and use mpirun -n N (N=tp*pp) to run
 offline_infer --help
 ```
-
 | args | type | default | notes |
 | :---- | :---- | :---- | :---- |
 | model_dir | string | None | The input engine directory |
@@ -27,7 +27,43 @@ offline_infer --help
 | streaming | bool | False | Whether to use streaming inference |
 | num_beams | int | 1 | The number of return sequences |
 | log_level | string | info | The log level, choices=['debug', 'info', 'warning', 'error'] |
-
+### Online inference
+#### Start Server
+```shell
+# build
+cd cpp_scripts
+cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
+# run --help to get the optional input args
+online_infer --help
+```
+| args | type | default | notes |
+| :---- | :---- | :---- | :---- |
+| model_dir | string | None | The input engine directory |
+| port | int | 18001 | The port of online server |
+| log_level | string | info | The log level, choices=['debug', 'info', 'warning', 'error'] |
+#### Start Client
+```shell
+curl 127.0.0.1:18001/generate_stream \
+    -X POST \
+    -d '{
+        "inputs": "What is AI?",
+        "parameters": {
+            "max_new_tokens": 17,
+            "num_beams": 2
+        }
+    }'
+```
+The return format is as follows:
+```json
+{
+    "finish_reason": ["running", "running"],
+    "generated_text": ["What is", "A"],
+    "output_logprobs": [[-2.4906, -1.2093], [-1.2093, -2.4906]],
+    "output_tokens": [[1724, 338], [13, 29909]],
+    "request_id": 2
+}
+```
+As the number of iterations increases, the values of the `generated_text`, `output_logprobs`, and `output_tokens` gradually grow.
 ## Yaml Parser
 ```yaml
 # The input directory
