@@ -5,7 +5,7 @@ project(tensorrt_llm_cpp)
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 
-set(TRTLLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../TensorRT-LLM")
+set(TRTLLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../TensorRT-LLM" CACHE PATH "Path to TensorRT-LLM directory")
 set(TRTLLM_LIB_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libtensorrt_llm.so")
 set(TRTLLM_PLUGIN_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libnvinfer_plugin_tensorrt_llm.so.10")
 set(TRTLLM_INCLUDE_DIR "${TRTLLM_DIR}/cpp/include")
