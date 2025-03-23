@@ -5,7 +5,7 @@ project(tensorrt_llm_cpp)
 find_package(MPI REQUIRED)
 include_directories(${MPI_INCLUDE_PATH})
 
-set(TRTLLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../TensorRT-LLM" CACHE PATH "Path to TensorRT-LLM directory")
+set(TRTLLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../TensorRT-LLM" CACHE PATH "Path to TensorRT-LLM directory")
 set(TRTLLM_LIB_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libtensorrt_llm.so")
 set(TRTLLM_PLUGIN_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libnvinfer_plugin_tensorrt_llm.so.10")
 set(TRTLLM_INCLUDE_DIR "${TRTLLM_DIR}/cpp/include")
@@ -86,7 +86,9 @@ include_directories(
     ${CXXOPTS_INCLUDE_DIR} 
     ${SENTENCEPIECE_INCLUDE_DIR}
     ${CPP_HTTPLIB_INCLUDE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/trtllm_src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
 )
 add_subdirectory("3rdparty/sentencepiece")
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/sentencepiece/src)
@@ -94,13 +96,16 @@ link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/sentencepiece/src)
 find_package(MPI REQUIRED)
 find_package(OpenSSL REQUIRED)
 
+file(GLOB TRTLLM_SRC "src/trtllm_src/*.cpp")
+file(GLOB UTILS_SRC "src/utils/*.cpp")
+list(APPEND CPP_FILES ${TRTLLM_SRC} ${UTILS_SRC})
+
 set(SOURCES
-    offline_infer.cpp
-    src/session.cpp
-    src/logger.cpp)
-add_executable(offline_infer ${SOURCES})
+    infer.cpp
+    ${CPP_FILES})
+add_executable(tllm-infer ${SOURCES})
 target_link_libraries(
-    offline_infer 
+    tllm-infer 
     nvinfer_plugin_tensorrt_llm 
     ${MPI_LIBRARIES} 
     ${TRT_LIB_PATH} 
@@ -109,12 +114,11 @@ target_link_libraries(
 )
 
 set(SOURCES
-    online_infer.cpp
-    src/session.cpp
-    src/logger.cpp)
-add_executable(online_infer ${SOURCES})
+    serve.cpp
+    ${CPP_FILES})
+add_executable(tllm-serve ${SOURCES})
 target_link_libraries(
-    online_infer 
+    tllm-serve 
     nvinfer_plugin_tensorrt_llm 
     ${MPI_LIBRARIES} 
     ${TRT_LIB_PATH} 

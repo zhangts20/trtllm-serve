@@ -49,14 +49,10 @@ def convert_checkpoint(build_config: BuildConfig):
 
 
 def get_output_dir(build_config: BuildConfig):
-    if build_config.output_dir != "None":
-        print(f"generated engines will be saved to {build_config.output_dir}")
-        return build_config.output_dir
-
     input_file_name = os.path.basename(build_config.model_dir)
-    # name-tpN-ppN-bwN-fp/bf/f8/w4/w8/a8-wcache/ocache
-    cache_str = "wcache" if build_config.use_prompt_cache else "ocache"
-    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-pp{build_config.pp_size}-bw{build_config.max_beam_width}-{DTYPE_MAPPING[build_config.dtype]}-{cache_str}"
+    # name-tpN-ppN-bwN-fp/bf/f8/w4/w8/a8
+    data_type = DTYPE_MAPPING[build_config.dtype]
+    output_file_name = f"{input_file_name}-tp{build_config.tp_size}-pp{build_config.pp_size}-bw{build_config.max_beam_width}-{data_type}"
 
     dir_name = "trtllm_" + tllm_version
     output_dir = os.path.join(os.path.dirname(build_config.model_dir),
@@ -76,9 +72,9 @@ def export_engine(build_config: BuildConfig):
     output_dir = get_output_dir(build_config)
     build_config.output_dir = output_dir
     command.extend(["--output_dir", output_dir])
-    command.extend(["--gemm_plugin", DTYPE_MAPPING[build_config.dtype]])
-    command.extend(
-        ["--gpt_attention_plugin", DTYPE_MAPPING[build_config.dtype]])
+    
+    command.extend(["--gpt_attention_plugin", "auto"])
+    command.extend(["--gemm_plugin", "auto"])
 
     command.extend(["--max_batch_size", str(build_config.max_batch_size)])
     command.extend(["--max_input_len", str(build_config.max_input_len)])
@@ -89,10 +85,8 @@ def export_engine(build_config: BuildConfig):
     command.extend(["--max_beam_width", str(build_config.max_beam_width)])
     command.extend(["--max_num_tokens", str(build_config.max_num_tokens)])
 
-    command.extend(["--gemm_plugin", "auto"])
     # Enable KV Cache reuse
-    if build_config.use_prompt_cache:
-        command.extend(["--use_paged_context_fmha", "enable"])
+    command.extend(["--use_paged_context_fmha", "enable"])
 
     command = " ".join(command)
     print(f"The command of converting engine: {command}")
@@ -100,8 +94,7 @@ def export_engine(build_config: BuildConfig):
     if ret != 0:
         raise RuntimeError("Error when converting engine")
 
-    if build_config.remove_temp_dir:
-        shutil.rmtree(build_config.temp_dir)
+    shutil.rmtree(build_config.temp_dir)
 
 
 def copy_tokenizer(src_dir: str, dst_dir: str):

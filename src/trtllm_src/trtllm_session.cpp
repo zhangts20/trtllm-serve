@@ -1,132 +1,18 @@
-#include "session.hpp"
+#include "trtllm_session.h"
 
-/// @brief Parse input args
-/// @param argc The number of inputs
-/// @param argv The input contents
-/// @param envp The runtime environment variables
-/// @return The struct of InputConfig
-InputConfig parseArgs(int argc, char **argv, char **envp) {
-    InputConfig input_config;
-    // clang-format off
-    cxxopts::Options options("MAIN", "A cpp inference of TensorRT-LLM.");
-    options.add_options()("help", "Print help");
-    options.add_options()("model_dir", "The input engine directory.", cxxopts::value<std::string>());
-    options.add_options()("input_text", "The input text for inference.", cxxopts::value<std::string>()->default_value("What is Deep Learning?"));
-    options.add_options()("max_new_tokens", "The max generated tokens.", cxxopts::value<int>()->default_value("17"));
-    options.add_options()("streaming", "Whether to use streaming inference.", cxxopts::value<bool>()->default_value("false"));
-    options.add_options()("num_beams", "The number of return sequences.", cxxopts::value<int>()->default_value("1"));
-    options.add_options()("log_level", "The log level.", cxxopts::value<std::string>()->default_value("info"));
-    // clang-format on
-    cxxopts::ParseResult args = options.parse(argc, argv);
-    // Check
-    if (args.count("help")) {
-        LOG_INFO(options.help());
-        exit(1);
-    }
-    if (!args.count("model_dir")) {
-        LOG_ERROR("The model dir is not given.\n");
-    }
-    fs::path engine_dir = args["model_dir"].as<std::string>();
-    if (!fs::exists(engine_dir)) {
-        LOG_ERROR("The model dir does not exist.\n");
-    }
-    input_config.engine_dir = engine_dir;
-    input_config.input_text = args["input_text"].as<std::string>();
-    input_config.max_new_tokens = args["max_new_tokens"].as<int>();
-    input_config.streaming = args["streaming"].as<bool>();
-    input_config.num_beams = args["num_beams"].as<int>();
-    // Set log level
-    auto logger = tlc::Logger::getLogger();
-    auto const log_level = args["log_level"].as<std::string>();
-    if (log_level == "trace") {
-        logger->setLevel(tlc::Logger::TRACE);
-    } else if (log_level == "debug") {
-        logger->setLevel(tlc::Logger::DEBUG);
-    } else if (log_level == "info") {
-        logger->setLevel(tlc::Logger::INFO);
-    } else if (log_level == "warning") {
-        logger->setLevel(tlc::Logger::WARNING);
-    } else if (log_level == "error") {
-        logger->setLevel(tlc::Logger::ERROR);
-    } else {
-        LOG_ERROR("Unexpected log level: " + log_level);
-    }
+#include <fstream>
 
-#ifdef DEBUG_TLLM
-    // Whether to print env info
-    for (char **env = envp; *env != 0; env++) {
-        char *thisEnv = *env;
-        printf("%s\n", thisEnv);
-    }
-#endif
-
-    return input_config;
-}
-
-InputServerConfig parseServerArgs(int argc, char **argv, char **envp) {
-    InputServerConfig input_server_config;
-    // clang-format off
-    cxxopts::Options options("MAIN", "A cpp inference of TensorRT-LLM.");
-    options.add_options()("help", "Print help");
-    options.add_options()("model_dir", "The input engine directory.", cxxopts::value<std::string>());
-    options.add_options()("port", "The port of serving.", cxxopts::value<int>()->default_value("18001"));
-    options.add_options()("log_level", "The log level.", cxxopts::value<std::string>()->default_value("info"));
-    // clang-format on
-    cxxopts::ParseResult args = options.parse(argc, argv);
-    // Check
-    if (args.count("help")) {
-        LOG_INFO(options.help());
-        exit(1);
-    }
-    if (!args.count("model_dir")) {
-        LOG_ERROR("The model dir is not given.\n");
-    }
-    fs::path engine_dir = args["model_dir"].as<std::string>();
-    if (!fs::exists(engine_dir)) {
-        LOG_ERROR("The model dir does not exist.\n");
-    }
-    input_server_config.engine_dir = engine_dir;
-    input_server_config.port = args["port"].as<int>();
-    // Set log level
-    auto logger = tlc::Logger::getLogger();
-    auto const log_level = args["log_level"].as<std::string>();
-    if (log_level == "trace") {
-        logger->setLevel(tlc::Logger::TRACE);
-    } else if (log_level == "debug") {
-        logger->setLevel(tlc::Logger::DEBUG);
-    } else if (log_level == "info") {
-        logger->setLevel(tlc::Logger::INFO);
-    } else if (log_level == "warning") {
-        logger->setLevel(tlc::Logger::WARNING);
-    } else if (log_level == "error") {
-        logger->setLevel(tlc::Logger::ERROR);
-    } else {
-        LOG_ERROR("Unexpected log level: " + log_level);
-    }
-
-#ifdef DEBUG_TLLM
-    // Whether to print env info
-    for (char **env = envp; *env != 0; env++) {
-        char *thisEnv = *env;
-        printf("%s\n", thisEnv);
-    }
-#endif
-
-    return input_server_config;
-}
-
-/// @brief Initialize InferenceSession, including loading weights and
-/// initializing executor
-/// @param engine_dir The directory contains engine file(s) and tokenizer files
+/// @brief Initialize InferenceSession, including loading weights and initializing executor
+/// @param model_dir The directory contains model file(s) and tokenizer file(s)
 /// @return Return true if initialization is successful; otherwise, return false
-bool InferenceSession::initialize(std::string engine_dir) {
-    this->engine_dir = engine_dir;
-    if (!tokenizer_session->initialize(engine_dir)) {
+bool InferenceSession::initialize(const std::string &model_dir) {
+    this->model_dir = model_dir;
+    if (!tokenizer_session->initialize(model_dir)) {
         LOG_ERROR("Failed to initialize tokenizer session.");
         return false;
     }
     // Set value according to config.json
-    fs::path config_path = fs::path(engine_dir) / "config.json";
+    fs::path config_path = fs::path(model_dir) / "config.json";
     std::ifstream config_file(config_path);
     if (!config_file.is_open()) {
         LOG_ERROR("Open config file failed.");
@@ -144,7 +30,8 @@ bool InferenceSession::initialize(std::string engine_dir) {
     executor_config->setMaxBatchSize(max_batch_size);
     executor_config->setMaxNumTokens(max_num_tokens);
 
-    initializeExecutor();
+    bool enable_kv_reuse = true;
+    initializeExecutor(enable_kv_reuse);
 
     return true;
 }
@@ -152,30 +39,33 @@ bool InferenceSession::initialize(std::string engine_dir) {
 /// @brief Initialize SchedulerConfig defined in executor.h
 /// @return The struct SchedulerConfig
 static tle::SchedulerConfig getSchedulerConfig() {
+    // TODO: What the relationship between this and the fixed value when exporting the model?
     tle::DynamicBatchConfig dynamic_batch_config = tle::DynamicBatchConfig(
         /* enableBatchSizeTuning =*/false,
         /* enableMaxNumTokensTuning =*/false,
-        /* dynamicBatchMovingAverageWindow =*/
-        tle::DynamicBatchConfig::kDefaultDynamicBatchMovingAverageWindow,
+        /* dynamicBatchMovingAverageWindow =*/128,
         /* batchSizeTable =*/tle::DynamicBatchConfig::kDefaultBatchSizeTable);
 
-    // clang-format off
     tle::SchedulerConfig scheduler_config(
-    // kMAX_UTILIZATION / kGUARANTEED_NO_EVICT / kSTATIC_BATCH
+    // - kMAX_UTILIZATION, this is expected to maximum GPU throught, it might require that some requests be paused and restarted
+    // - kGUARANTEED_NO_EVICT, uses KV cache more conservatively guaranteeing that a request, once started, will run to completion without eviction
+    // - kSTATIC_BATCH, does not schedule new requests until all requests in current batch are completed  
     /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::kGUARANTEED_NO_EVICT,
-    // kFIRST_COME_FIRST_SERVED / kEQUAL_PROGRESS
+    // - kFIRST_COME_FIRST_SERVED, sequential chunking, complete the unfinished context phase first
+    // - kEQUAL_PROGRESS, Iterate through each context request in sequence and attempt to increase its chunk count until the constraint is exceeded 
     /* contextChunkingPolicy =*/tle::ContextChunkingPolicy::kFIRST_COME_FIRST_SERVED,
     /* dynamicBatchConfig =*/dynamic_batch_config);
-    // clang-format on
 
     return scheduler_config;
 }
 
 /// @brief Initialize KvCacheConfig defined in executor.h
 /// @return The struct KvCacheConfig
-static tle::KvCacheConfig getKvCacheConfig() {
+static tle::KvCacheConfig getKvCacheConfig(bool enable_kv_reuse) {
+    // 1. The maxTokens and freeGpuMemoryFraction can define the memory allocated for KV, and minimum will be adopted
+    // 2. hostCacheSize define the second memory (not GPU) to be allocated for KV
     tle::KvCacheConfig kv_cache_config(
-        /* enableBlockReuse =*/false,
+        /* enableBlockReuse =*/enable_kv_reuse,
         /* maxTokens =*/std::nullopt,
         /* maxAttentionWindowVec =*/std::nullopt,
         /* sinkTokenLength =*/std::nullopt,
@@ -191,15 +81,18 @@ static tle::KvCacheConfig getKvCacheConfig() {
 }
 
 /// @brief Initialize executor
-void InferenceSession::initializeExecutor() {
+void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
     executor_config->setSchedulerConfig(getSchedulerConfig());
-    executor_config->setKvCacheConfig(getKvCacheConfig());
+    executor_config->setKvCacheConfig(getKvCacheConfig(enable_kv_reuse));
+    // This feature splits the context into serveral chunks, the size of the chunk needs to be an integer multiple of the kv-cache block size
     executor_config->setEnableChunkedContext(/* enableChunkedContext =*/false);
     executor_config->setNormalizeLogProbs(/* normalizeLogProbs =*/false);
     executor_config->setIterStatsMaxIterations(
         /* iterStatsMaxIterations =*/tle::ExecutorConfig::kDefaultIterStatsMaxIterations);
     executor_config->setRequestStatsMaxIterations(
         /* requestStatsMaxIterations =*/tle::ExecutorConfig::kDefaultRequestStatsMaxIterations);
+    // - kSTATIC, the traditional batching schema with a batch of requets running in lockstep until all other requests are completed
+    // - kINFLIGHT, the requests are returned as soon as the end condition is met without any padding
     executor_config->setBatchingType(
         /* batchingType =*/tle::BatchingType::kINFLIGHT);
 
@@ -238,7 +131,9 @@ void InferenceSession::initializeExecutor() {
         /* EagleConfig =*/std::nullopt);
     executor_config->setDecodingConfig(decoding_config);
 
+    // Set the GPU weights percent for weight streaming
     executor_config->setGpuWeightsPercent(/* gpuWeightsPercent =*/1.0);
+    // The maximum number of requests allowed in queue before rejecting new requests
     executor_config->setMaxQueueSize(/* maxQueueSize =*/std::nullopt);
 
     tle::ExtendedRuntimePerfKnobConfig extended_runtime_perf_knob_config(
@@ -248,15 +143,8 @@ void InferenceSession::initializeExecutor() {
         /* cudaGraphCacheSize =*/0);
     executor_config->setExtendedRuntimePerfKnobConfig(extended_runtime_perf_knob_config);
 
-#ifdef DEBUG_TLLM
-    tle::DebugConfig debug_config(
-        /* dumpInputTensors =*/false,
-        /* dumpOuputTensors =*/false,
-        /* debugTensorNames =*/{});
-    executor_config->setDebugConfig(debug_config);
-#endif
-
     executor_config->setRecvPollPeriodMs(/* recvPollPeriodMs =*/0);
+    // The maximum time in microseconds a scheduled request can remain idle before getting terminated, default is 3 minutes
     executor_config->setMaxSeqIdleMicroseconds(
         /* maxSeqIdleMicroseconds =*/180000000);
 
@@ -271,36 +159,31 @@ void InferenceSession::initializeExecutor() {
         /* stopTokenIds =*/std::nullopt);
     // Initialize executor
     executor = std::make_unique<tle::Executor>(
-        /* modelPath =*/engine_dir,
+        /* modelPath =*/model_dir,
         /* modelType =*/tle::ModelType::kDECODER_ONLY,
         /* executorConfig =*/*executor_config);
 }
 
-/// @brief Add a new request, and return ids of each request
-/// @param input_text Will be `What is Deep Learning` if not given
+/// @brief Add a new request
+/// @param input_text The input text
 /// @param streaming Whether to do streaming inference
 /// @param max_new_tokens The max generated tokens
 /// @param num_beams The max return sequences
-void InferenceSession::addRequests(std::optional<std::string> input_text, bool streaming, int max_new_tokens,
-                                   int num_beams) {
-    // Set `What is Deep Learning?` to the default input text
+void InferenceSession::addRequests(const InputConfig &input_config) {
+    // Encode input text
     tle::VecTokens vec_tokens;
-    if (input_text) {
-        tokenizer_session->encode(input_text.value(), vec_tokens);
-    } else {
-        vec_tokens = {1, 1724, 338, 21784, 29257, 29973};
-    }
+    tokenizer_session->encode(input_config.input_text, vec_tokens);
     tle::OutputConfig output_config = tle::OutputConfig(
         /* returnLogProbs =*/true,
         /* returnContextLogits =*/false,
         /* returnGenerationLogits =*/false,
-        /* excludeInputFromOutput =*/false,
+        /* excludeInputFromOutput =*/true,
         /* returnEncoderOutput =*/false,
         /* returnPerfMetrics =*/false);
     tle::SamplingConfig sampling_config = tle::SamplingConfig(
-        /* beamWidth =*/num_beams,
-        /* topK =*/std::nullopt,
-        /* topP =*/std::nullopt,
+        /* beamWidth =*/input_config.sampling_parameters.num_beams,
+        /* topK =*/input_config.sampling_parameters.top_k,
+        /* topP =*/input_config.sampling_parameters.top_p,
         /* topPMin =*/std::nullopt,
         /* topPResetIds =*/std::nullopt,
         /* topPDecay =*/std::nullopt,
@@ -317,8 +200,8 @@ void InferenceSession::addRequests(std::optional<std::string> input_text, bool s
         /* numReturnSequences =*/std::nullopt);
     tle::Request request = tle::Request(
         /* inputTokenIds =*/vec_tokens,
-        /* maxTokens =*/max_new_tokens,
-        /* streaming =*/streaming,
+        /* maxTokens =*/input_config.sampling_parameters.max_new_tokens,
+        /* streaming =*/input_config.sampling_parameters.is_streaming,
         /* samplingConfig =*/sampling_config,
         /* outputConfig =*/output_config,
         /* endId =*/std::nullopt,
@@ -355,7 +238,7 @@ void InferenceSession::addRequests(std::optional<std::string> input_text, bool s
 }
 
 /// @brief Do inference and print streaming or no-streaming outputs
-void InferenceSession::inferRequests() {
+void InferenceSession::infer() {
     std::chrono::milliseconds ms(5000);
     tle::SizeType32 numFinished{0};
     // To store output texts
@@ -375,20 +258,8 @@ void InferenceSession::inferRequests() {
                     for (int b = 0; b < result.outputTokenIds.size(); ++b) {
                         std::string output_text;
                         tokenizer_session->decode(output_text, result.outputTokenIds.at(b));
-                        output_texts_mapping.try_emplace(response.getRequestId()).first->second.push_back(output_text);
+                        output_texts_mapping.try_emplace(response.getRequestId()).first->second.emplace_back(output_text);
                     }
-                } else {
-                    // Loop for each beam
-                    std::vector<tle::IdType> output_tokens;
-                    std::vector<tle::FloatType> output_logprobs;
-                    json streaming_data;
-                    for (int b = 0; b < result.outputTokenIds.size(); ++b) {
-                        size_t output_len = result.outputTokenIds.at(b).size();
-                        output_tokens.emplace_back(result.outputTokenIds.at(b)[output_len - 1]);
-                        output_logprobs.emplace_back(result.logProbs.value().at(b)[output_len - 1]);
-                    }
-                    streaming_data["output tokens"] = output_tokens;
-                    streaming_data["output logprobs"] = output_logprobs;
                 }
             }
         }
@@ -457,7 +328,7 @@ bool TokenizerSession::initialize(fs::path model_dir) {
 /// @param input_text The input text to be encoded
 /// @param input_ids The result of encoded input text
 /// @return Return true if initialization is successful; otherwise, return false
-bool TokenizerSession::encode(std::string input_text, tle::VecTokens &input_ids) {
+bool TokenizerSession::encode(const std::string &input_text, tle::VecTokens &input_ids) {
     const sp::util::Status status = processor->Encode(input_text, &input_ids);
     if (!status.ok()) {
         LOG_ERROR("Failed to encode input (" + input_text + ")");
@@ -470,7 +341,7 @@ bool TokenizerSession::encode(std::string input_text, tle::VecTokens &input_ids)
 /// @param output_text The output text to be decoed
 /// @param output_ids The result out decoded output text
 /// @return Return true if initialization is successful; otherwise, return false
-bool TokenizerSession::decode(std::string &output_text, tle::VecTokens &output_ids) {
+bool TokenizerSession::decode(std::string &output_text, const tle::VecTokens &output_ids) {
     const sp::util::Status status = processor->Decode(output_ids, &output_text);
     if (!status.ok()) {
         LOG_ERROR("Failed to decode output.");

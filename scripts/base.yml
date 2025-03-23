@@ -1,7 +1,5 @@
 model_dir: "/data/internlm2-100b-0924-llama"
-output_dir: None
 model_type: "llama"
-remove_temp_dir: true
 tp_size: 1
 pp_size: 1
 dtype: "bf"
@@ -10,4 +8,3 @@ max_input_len: 2048
 max_output_len: 1024
 max_beam_width: 2
 max_num_tokens: 20000
-use_prompt_cache: true

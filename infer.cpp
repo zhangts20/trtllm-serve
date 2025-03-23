@@ -1,7 +1,10 @@
-#include "session.hpp"
+#include "trtllm_session.h"
+#include "types.h"
+#include "args_utils.h"
+#include "tensorrt_llm/plugins/api/tllmPlugin.h"
 
 int main(int argc, char **argv, char **envp) {
-    InputConfig input_config = parseArgs(argc, argv, envp);
+    InputConfig input_config = parseInferArgs(argc, argv, envp);
     // Initialize tensorrt_llm plugins
     initTrtLlmPlugins();
     // TP Launcher
@@ -19,9 +22,7 @@ int main(int argc, char **argv, char **envp) {
               std::to_string(world_size));
     // Initialize InferenceSession
     InferenceSession inference_session;
-    inference_session.initialize(input_config.engine_dir);
-    inference_session.addRequests(
-        input_config.input_text, input_config.streaming,
-        input_config.max_new_tokens, input_config.num_beams);
-    inference_session.inferRequests();
+    inference_session.initialize(input_config.model_dir.value());
+    inference_session.addRequests(input_config);
+    inference_session.infer();
 }

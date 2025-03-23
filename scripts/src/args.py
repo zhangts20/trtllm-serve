@@ -10,12 +10,10 @@ class BuildConfig:
     model_dir: str
     # The temp model directory to save checkpoint, default is to add -temp to the input name in output directory
     temp_dir: str = None
-    # The output directory, the recommended setting is None to get formatted output name
+    # The output directory
     output_dir: str = None
     # The model type, default is llama, the convert script is determined by examples/${build_type}/convert_checkpoint.py
     model_type: str = "llama"
-    # Whether remove temp directory, default is true
-    remove_temp_dir: bool = True
     # The tensor parallel size of generated engines
     tp_size: int = 1
     # The pipeline parallel size of generated engines
@@ -32,8 +30,6 @@ class BuildConfig:
     max_output_len: int = 512
     # The max num tokens of generated engines, a suitable value can be determined through calculation or experimentation
     max_num_tokens: int = -1
-    # Whether build engines with prompt cache
-    use_prompt_cache: bool = True
 
 
 def get_args(yml_path: str):

@@ -1,9 +1,6 @@
-#ifndef _LOGGER_HPP_
-#define _LOGGER_HPP_
+#ifndef _LOG_UTILS_H_
+#define _LOG_UTILS_H_
 
-#include <cstring>
-#include <ctime>
-#include <iostream>
 #include <string>
 
 enum LogLevel {
@@ -38,4 +35,4 @@ class Logger {
     Logger::log(LOG_WARNING, message, __FILE__, __LINE__)
 #define LOG_ERROR(message) Logger::log(LOG_ERROR, message, __FILE__, __LINE__)
 
-#endif // _LOGGER_HPP_
+#endif

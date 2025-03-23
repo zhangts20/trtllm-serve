@@ -1,4 +1,8 @@
-#include "logger.hpp"
+#include "log_utils.h"
+
+#include <cstring>
+#include <ctime>
+#include <iostream>
 
 LogLevel Logger::mLogLevel = LOG_INFO;
 
