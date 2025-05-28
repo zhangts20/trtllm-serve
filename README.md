@@ -86,3 +86,6 @@ max_num_tokens: 20000
 Other settings such as paged KV cache and remove input padding, along with other configurations not explicitly mentioned, will follow the default values set by TensorRT-LLM.
 ## Other Settings
 1. When building engine, the env `TRTLLM_ROOT` is set to a default value `../TensorRT-LLM/examples`.
+
+## Supported Version
+[v0.16.0](https://github.com/NVIDIA/TensorRT-LLM/tree/v0.16.0)
