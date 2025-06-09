@@ -1,5 +1,6 @@
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 
+#include <mpi.h>
 #include "httplib.h"
 #include "args_utils.h"
 #include "log_utils.h"
@@ -77,6 +78,12 @@ int main(int argc, char **argv, char **envp) {
     if (!inference_session.initialize(input_server_config.model_dir)) {
         return -1;
     }
+    
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank != 0) {
+        return 0;
+    }
 
     httplib::Server server;
 
@@ -85,6 +92,7 @@ int main(int argc, char **argv, char **envp) {
         handleRequests(req, res, &inference_session);
     });
 
-    LOG_INFO("Server available at localhost:" + std::to_string(input_server_config.port));
-    server.listen("localhost", input_server_config.port);
+
+    LOG_INFO("Server available at 0.0.0.0:" + std::to_string(input_server_config.port));
+    server.listen("0.0.0.0", input_server_config.port);
 }
