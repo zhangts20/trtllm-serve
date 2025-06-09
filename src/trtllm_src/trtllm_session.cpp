@@ -8,7 +8,6 @@
 bool InferenceSession::initialize(const std::string &model_dir) {
     this->model_dir = model_dir;
     if (!tokenizer_session->initialize(model_dir)) {
-        LOG_ERROR("Failed to initialize tokenizer session.");
         return false;
     }
     // Set value according to config.json
@@ -212,11 +211,13 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* embeddingBias =*/std::nullopt,
         /* externalDraftTokensConfig =*/std::nullopt,
         /* pTuningConfig =*/std::nullopt,
+        /* multimodalEmbedding =*/std::nullopt,
         /* mRopeConfig =*/std::nullopt,
         /* loraConfig =*/std::nullopt,
         /* lookaheadConfig =*/std::nullopt,
         /* kvCacheRetentionConfig =*/std::nullopt,
         /* logitsPostProcessorName =*/std::nullopt,
+        /* logitsPostProcessor =*/std::nullopt,
         /* encoderInputTokenIds =*/std::nullopt,
         /* clientId =*/std::nullopt,
         /* returnAllGeneratedTokens =*/true,
@@ -230,6 +231,7 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* eagleConfig =*/std::nullopt,
         /* skipCrossAttnBlocks =*/std::nullopt,
         /* guideDecodingParams =*/std::nullopt,
+        /* languageAdapterUid =*/std::nullopt,
         /* allottedTimeMs =*/std::nullopt);
     // Add requests
     if (executor->canEnqueueRequests()) {
@@ -316,11 +318,14 @@ std::optional<OutputConfig> InferenceSession::serve() {
 /// @param model_dir The directory contains tokenizer.model
 /// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::initialize(fs::path model_dir) {
-    const sp::util::Status status = processor->Load((model_dir / "tokenizer.model").c_str());
-    if (!status.ok()) {
-        LOG_ERROR("Failed to load tokenizer.model.");
+    try {
+        std::string blob = common_utils::LoadBytesFromFile((model_dir / "tokenizer.json").string());
+        processor = tokenizers::Tokenizer::FromBlobJSON(blob);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to load tokenizer!");
         return false;
     }
+    
     return true;
 }
 
@@ -329,11 +334,13 @@ bool TokenizerSession::initialize(fs::path model_dir) {
 /// @param input_ids The result of encoded input text
 /// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::encode(const std::string &input_text, tle::VecTokens &input_ids) {
-    const sp::util::Status status = processor->Encode(input_text, &input_ids);
-    if (!status.ok()) {
-        LOG_ERROR("Failed to encode input (" + input_text + ")");
+    try {
+        input_ids = processor->Encode(input_text);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to encode input!");
         return false;
     }
+    
     return true;
 }
 
@@ -342,10 +349,12 @@ bool TokenizerSession::encode(const std::string &input_text, tle::VecTokens &inp
 /// @param output_ids The result out decoded output text
 /// @return Return true if initialization is successful; otherwise, return false
 bool TokenizerSession::decode(std::string &output_text, const tle::VecTokens &output_ids) {
-    const sp::util::Status status = processor->Decode(output_ids, &output_text);
-    if (!status.ok()) {
-        LOG_ERROR("Failed to decode output.");
+    try {
+        output_text = processor->Decode(output_ids);
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to decode output!");
         return false;
     }
+    
     return true;
 }

@@ -7,7 +7,7 @@ include_directories(${MPI_INCLUDE_PATH})
 
 set(TRTLLM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../TensorRT-LLM" CACHE PATH "Path to TensorRT-LLM directory")
 set(TRTLLM_LIB_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libtensorrt_llm.so")
-set(TRTLLM_PLUGIN_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libnvinfer_plugin_tensorrt_llm.so.10")
+set(TRTLLM_PLUGIN_PATH "${TRTLLM_DIR}/tensorrt_llm/libs/libnvinfer_plugin_tensorrt_llm.so")
 set(TRTLLM_INCLUDE_DIR "${TRTLLM_DIR}/cpp/include")
 
 ## Adapted from examples/cpp/executor/CMakeLists.txt
@@ -76,7 +76,7 @@ set_property(
 # Add submodule
 set(JSON_INCLUDE_DIR "3rdparty/json/include")
 set(CXXOPTS_INCLUDE_DIR "3rdparty/cxxopts/include")
-set(SENTENCEPIECE_INCLUDE_DIR "3rdparty/sentencepiece/src")
+set(SENTENCEPIECE_INCLUDE_DIR "3rdparty/tokenizers-cpp/include")
 set(CPP_HTTPLIB_INCLUDE_DIR "3rdparty/cpp-httplib")
 include_directories(
     ${TRT_INCLUDE_DIR} 
@@ -90,14 +90,14 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/trtllm_src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils
 )
-add_subdirectory("3rdparty/sentencepiece")
-link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/sentencepiece/src)
+add_subdirectory("3rdparty/tokenizers-cpp")
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/build/3rdparty/tokenizers-cpp/)
 
 find_package(MPI REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 file(GLOB TRTLLM_SRC "src/trtllm_src/*.cpp")
-file(GLOB UTILS_SRC "src/utils/*.cpp")
+file(GLOB UTILS_SRC "src/utils/*_utils.cpp")
 list(APPEND CPP_FILES ${TRTLLM_SRC} ${UTILS_SRC})
 
 set(SOURCES
@@ -109,7 +109,7 @@ target_link_libraries(
     nvinfer_plugin_tensorrt_llm 
     ${MPI_LIBRARIES} 
     ${TRT_LIB_PATH} 
-    sentencepiece
+    tokenizers_cpp
     ${OPENSSL_SSL_LIBRARY}
 )
 
@@ -122,6 +122,6 @@ target_link_libraries(
     nvinfer_plugin_tensorrt_llm 
     ${MPI_LIBRARIES} 
     ${TRT_LIB_PATH} 
-    sentencepiece
+    tokenizers_cpp
     OpenSSL::SSL OpenSSL::Crypto 
 )

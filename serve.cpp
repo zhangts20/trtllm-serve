@@ -74,7 +74,9 @@ int main(int argc, char **argv, char **envp) {
     initTrtLlmPlugins();
     // Initialize InferenceSession
     InferenceSession inference_session;
-    inference_session.initialize(input_server_config.model_dir);
+    if (!inference_session.initialize(input_server_config.model_dir)) {
+        return -1;
+    }
 
     httplib::Server server;
 

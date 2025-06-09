@@ -4,9 +4,9 @@
 [submodule "3rdparty/cxxopts"]
 	path = 3rdparty/cxxopts
 	url = https://github.com/jarro2783/cxxopts
-[submodule "3rdparty/sentencepiece"]
-	path = 3rdparty/sentencepiece
-	url = https://github.com/google/sentencepiece
 [submodule "3rdparty/cpp-httplib"]
 	path = 3rdparty/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib
+[submodule "3rdparty/tokenizers-cpp"]
+	path = 3rdparty/tokenizers-cpp
+	url = https://github.com/mlc-ai/tokenizers-cpp

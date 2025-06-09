@@ -2,15 +2,15 @@
 #define _TRTLLM_SESSION_H_
 
 #include "types.h"
+#include "common_utils.h"
 #include "log_utils.h"
 #include "nlohmann/json.hpp"
-#include "sentencepiece_processor.h"
+#include "tokenizers_cpp.h"
 #include "tensorrt_llm/executor/executor.h"
 
 using json = nlohmann::json;
 
 namespace fs = std::filesystem;
-namespace sp = sentencepiece;
 namespace tlc = tensorrt_llm::common;
 namespace tle = tensorrt_llm::executor;
 
@@ -64,11 +64,10 @@ public:
 
 class TokenizerSession {
 private:
-    // The SentencePieceProcessor to encode and decode
-    std::unique_ptr<sp::SentencePieceProcessor> processor;
+    // The tokenizers::Tokenizer to encode and decode
+    std::unique_ptr<tokenizers::Tokenizer> processor;
 
 public:
-    TokenizerSession() : processor(std::make_unique<sp::SentencePieceProcessor>()) {}
     // Initialization
     bool initialize(fs::path model_dir);
     // Encode input text
