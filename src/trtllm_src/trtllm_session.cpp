@@ -275,31 +275,31 @@ void InferenceSession::infer() {
 }
 
 std::optional<OutputConfig> InferenceSession::serve() {
-    std::chrono::milliseconds ms(5000);
-    // Get results
-    std::vector<tle::Response> responses = executor->awaitResponses(ms);
-    // Loop for each response
-    for (tle::Response response : responses) {
-        if (response.hasError()) {
-            LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
-        } else {
+    bool is_final = false;
+    while (!is_final) {
+        std::vector<tle::Response> responses = executor->awaitResponses();
+        for (tle::Response response : responses) {
+            if (response.hasError()) {
+                LOG_ERROR("Response error: " + std::to_string(response.getRequestId()));
+                continue;
+            }
+
             tle::Result result = response.getResult();
 
             std::vector<std::string> finish_reasons;
             for (auto finish_reason : result.finishReasons) {
-                if (result.isFinal) {
-                    finish_reasons.emplace_back("length");
-                } else {
-                    finish_reasons.emplace_back(FinishReasonMapping[finish_reason]);
+                finish_reasons.emplace_back(FinishReasonMapping[finish_reason]);
+                if (finish_reason != tle::FinishReason::kNOT_FINISHED) {
+                    is_final = true;
                 }
             }
-            // To retain four significant figures
+
             std::vector<std::vector<float>> output_logprobs;
             output_logprobs.reserve(result.logProbs.value().size());
             for (const std::vector<tle::FloatType> &vec_logprobs : result.logProbs.value()) {
                 std::vector<float> inner_logprobs(vec_logprobs.size());
                 std::transform(vec_logprobs.begin(), vec_logprobs.end(), inner_logprobs.begin(),
-                               [](float v) { return std::round(v * 10000.0f) / 10000.0f; });
+                            [](float v) { return std::round(v * 10000.0f) / 10000.0f; });
                 output_logprobs.push_back(std::move(inner_logprobs));
             }
 

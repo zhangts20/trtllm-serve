@@ -14,7 +14,6 @@ using json = nlohmann::json;
 void handleRequests(const httplib::Request &req, httplib::Response &res, InferenceSession *inference_session) {
     try {
         json body_json = json::parse(req.body);
-        // Check members
         if (!body_json.contains("inputs")) {
             LOG_ERROR("The key inputs does not exist");
         }
@@ -26,11 +25,10 @@ void handleRequests(const httplib::Request &req, httplib::Response &res, Inferen
             LOG_ERROR("The inputs must be a string");
         }
         std::string inputs = body_json["inputs"].get<std::string>();
-        // Append requests
         bool is_streaming = getValueorDefault<bool>(body_json["parameters"], "streaming", true);
-        int max_new_tokens = getValueorDefault<int>(body_json["parameters"], "max_new_tokens", 17);
-        int num_beams = getValueorDefault<int>(body_json["parameters"], "num_beams", 1);
-        int top_k = getValueorDefault<int>(body_json["parameters"], "top_k", 1);
+        unsigned max_new_tokens = getValueorDefault<int>(body_json["parameters"], "max_new_tokens", 17);
+        unsigned num_beams = getValueorDefault<int>(body_json["parameters"], "num_beams", 1);
+        unsigned top_k = getValueorDefault<int>(body_json["parameters"], "top_k", 1);
         float top_p = getValueorDefault<float>(body_json["parameters"], "top_p", 0.9);
         SamplingParameters sampling_parameters = { is_streaming, max_new_tokens, num_beams, top_k, top_p };
         // The model_dir will not be used when adding requests, we set it to null here
@@ -46,9 +44,14 @@ void handleRequests(const httplib::Request &req, httplib::Response &res, Inferen
     }
 
     res.set_chunked_content_provider("text/event-stream", [inference_session](size_t offset, httplib::DataSink &sink) {
-        auto output_config = inference_session->serve();
-        if (output_config.has_value()) {
-            // Decode output tokens
+        while (true) {
+            auto output_config = inference_session->serve();
+            if (!output_config.has_value()) {
+                const std::string ev_failed = "\n[FAILED]\n\n";
+                sink.write(ev_failed.c_str(), ev_failed.size());
+                break; 
+            }
+
             std::vector<std::string> generated_text;
             for (auto output_tokens : output_config->output_tokens) {
                 std::string text;
@@ -56,24 +59,33 @@ void handleRequests(const httplib::Request &req, httplib::Response &res, Inferen
                 generated_text.emplace_back(text);
             }
             json response_body = {{"request_id", output_config->request_id},
-                                  {"output_tokens", output_config->output_tokens},
-                                  {"output_logprobs", output_config->output_logprobs},
-                                  {"finish_reason", output_config->finish_reason},
-                                  {"generated_text", generated_text}};
+                                {"output_tokens", output_config->output_tokens},
+                                {"output_logprobs", output_config->output_logprobs},
+                                {"finish_reason", output_config->finish_reason},
+                                {"generated_text", generated_text}};
             std::string return_str = dumpJson(response_body) + "\n";
             sink.write(return_str.data(), return_str.size());
-        } else {
-            sink.done();
+
+            bool finished = std::any_of(output_config->finish_reason.begin(), output_config->finish_reason.end(),
+                [](const std::string& reason) {
+                    return reason != "running";
+                });
+
+            if (finished) {
+                const std::string ev_done = "\n[DONE]\n\n";
+                sink.write(ev_done.c_str(), ev_done.size());
+                break;
+            }
         }
+        sink.done();
+                    
         return true;
     });
 }
 
 int main(int argc, char **argv, char **envp) {
     InputServerConfig input_server_config = parseServerArgs(argc, argv, envp);
-    // Initialize tensorrt_llm plugins
     initTrtLlmPlugins();
-    // Initialize InferenceSession
     InferenceSession inference_session;
     if (!inference_session.initialize(input_server_config.model_dir)) {
         return -1;
@@ -91,7 +103,6 @@ int main(int argc, char **argv, char **envp) {
         res.set_header("Content-Type", "text/event-stream");
         handleRequests(req, res, &inference_session);
     });
-
 
     LOG_INFO("Server available at 0.0.0.0:" + std::to_string(input_server_config.port));
     server.listen("0.0.0.0", input_server_config.port);

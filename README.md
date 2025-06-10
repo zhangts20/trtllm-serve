@@ -25,11 +25,13 @@ tllm-infer --help
 | streaming | bool | False | Whether to use streaming inference |
 | num_beams | int | 1 | The number of return sequences |
 ### Online inference
-#### Start Server
+The script to build engine:
 ```shell
-# build
 mkdir build && cd build
 cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
+```
+#### Start Server
+```shell
 tllm-serve --help
 ```
 | args | type | default | notes |
@@ -88,4 +90,4 @@ Other settings such as paged KV cache and remove input padding, along with other
 1. When building engine, the env `TRTLLM_ROOT` is set to a default value `../TensorRT-LLM/examples`.
 
 ## Supported Version
-[v0.16.0](https://github.com/NVIDIA/TensorRT-LLM/tree/v0.16.0)
+[v0.20.0rc3](https://github.com/NVIDIA/TensorRT-LLM/tree/v0.20.0rc3)
