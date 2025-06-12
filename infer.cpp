@@ -1,7 +1,7 @@
-#include "trtllm_session.h"
-#include "types.h"
 #include "args_utils.h"
 #include "tensorrt_llm/plugins/api/tllmPlugin.h"
+#include "trtllm_session.h"
+#include "types.h"
 
 int main(int argc, char **argv, char **envp) {
     InputConfig input_config = parseInferArgs(argc, argv, envp);
@@ -18,8 +18,7 @@ int main(int argc, char **argv, char **envp) {
     if (world_size_ != nullptr) {
         world_size = std::stoi(world_size_);
     }
-    LOG_DEBUG("Process " + std::to_string(world_rank) + " of " +
-              std::to_string(world_size));
+    LOG_DEBUG("Process " + std::to_string(world_rank) + " of " + std::to_string(world_size));
     // Initialize InferenceSession
     InferenceSession inference_session;
     inference_session.initialize(input_config.model_dir.value());

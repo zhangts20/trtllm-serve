@@ -3,6 +3,6 @@
 
 namespace common_utils {
 
-std::string LoadBytesFromFile(const std::string& path);
+std::string LoadBytesFromFile(const std::string &path);
 
 }

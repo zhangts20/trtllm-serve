@@ -1,12 +1,12 @@
 #ifndef _TRTLLM_SESSION_H_
 #define _TRTLLM_SESSION_H_
 
-#include "types.h"
 #include "common_utils.h"
 #include "log_utils.h"
 #include "nlohmann/json.hpp"
-#include "tokenizers_cpp.h"
 #include "tensorrt_llm/executor/executor.h"
+#include "tokenizers_cpp.h"
+#include "types.h"
 
 using json = nlohmann::json;
 
@@ -31,8 +31,8 @@ static std::map<tle::FinishReason, std::string> FinishReasonMapping = {
 class TokenizerSession;
 
 class InferenceSession {
-private:
-    // The input directory contains model file(s) and tokenizer file(s) 
+  private:
+    // The input directory contains model file(s) and tokenizer file(s)
     std::string model_dir;
     // The Executor defined in executor.h
     std::unique_ptr<tle::Executor> executor;
@@ -42,11 +42,11 @@ private:
     std::vector<tle::Request> requests;
     std::vector<tle::IdType> request_ids;
 
-public:
+  public:
     // The session to encode input and decode output
     std::unique_ptr<TokenizerSession> tokenizer_session;
 
-public:
+  public:
     InferenceSession()
         : executor_config(std::make_unique<tle::ExecutorConfig>()),
           tokenizer_session(std::make_unique<TokenizerSession>()) {}
@@ -63,11 +63,11 @@ public:
 };
 
 class TokenizerSession {
-private:
+  private:
     // The tokenizers::Tokenizer to encode and decode
     std::unique_ptr<tokenizers::Tokenizer> processor;
 
-public:
+  public:
     // Initialization
     bool initialize(fs::path model_dir);
     // Encode input text

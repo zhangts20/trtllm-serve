@@ -13,16 +13,11 @@ void Logger::initLogLevel() {
     }
 }
 
-void Logger::log(LogLevel log_level, const std::string &message,
-                 const char *filepath, int linenum) {
+void Logger::log(LogLevel log_level, const std::string &message, const char *filepath, int linenum) {
     if (log_level >= mLogLevel) {
-        const char *filename =
-            strrchr(filepath, '/') ? strrchr(filepath, '/') + 1 : filepath;
-        std::cout << "[" << getTimestamp() << "] "
-                  << "[" << logLevelToString(log_level) << "]"
-                  << " " << filename << " " << linenum << ": "
-                  << getLogColor(log_level) << message << "\033[0m"
-                  << std::endl;
+        const char *filename = strrchr(filepath, '/') ? strrchr(filepath, '/') + 1 : filepath;
+        std::cout << "[" << getTimestamp() << "] " << "[" << logLevelToString(log_level) << "]" << " " << filename
+                  << " " << linenum << ": " << getLogColor(log_level) << message << "\033[0m" << std::endl;
     }
 }
 

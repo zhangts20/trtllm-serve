@@ -1,6 +1,6 @@
 #include "args_utils.h"
-#include "log_utils.h"
 #include "cxxopts.hpp"
+#include "log_utils.h"
 
 #include <filesystem>
 #include <iostream>
@@ -58,7 +58,7 @@ InputServerConfig parseServerArgs(int argc, char **argv, char **envp) {
     options.add_options()("port", "The port of serving.", cxxopts::value<int>()->default_value("18001"));
     // clang-format on
     cxxopts::ParseResult args = options.parse(argc, argv);
-    
+
     if (args.count("help")) {
         std::cout << options.help() << std::endl;
         exit(1);

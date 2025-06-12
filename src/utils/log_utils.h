@@ -16,8 +16,7 @@ class Logger {
 
     static void initLogLevel();
 
-    static void log(LogLevel log_level, const std::string &message,
-                    const char *filename, int linenum);
+    static void log(LogLevel log_level, const std::string &message, const char *filename, int linenum);
 
   private:
     static std::string logLevelToString(LogLevel log_level);
@@ -31,8 +30,7 @@ class Logger {
 
 #define LOG_DEBUG(message) Logger::log(LOG_DEBUG, message, __FILE__, __LINE__)
 #define LOG_INFO(message) Logger::log(LOG_INFO, message, __FILE__, __LINE__)
-#define LOG_WARNING(message)                                                   \
-    Logger::log(LOG_WARNING, message, __FILE__, __LINE__)
+#define LOG_WARNING(message) Logger::log(LOG_WARNING, message, __FILE__, __LINE__)
 #define LOG_ERROR(message) Logger::log(LOG_ERROR, message, __FILE__, __LINE__)
 
 #endif

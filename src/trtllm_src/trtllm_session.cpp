@@ -46,14 +46,17 @@ static tle::SchedulerConfig getSchedulerConfig() {
         /* batchSizeTable =*/tle::DynamicBatchConfig::kDefaultBatchSizeTable);
 
     tle::SchedulerConfig scheduler_config(
-    // - kMAX_UTILIZATION, this is expected to maximum GPU throught, it might require that some requests be paused and restarted
-    // - kGUARANTEED_NO_EVICT, uses KV cache more conservatively guaranteeing that a request, once started, will run to completion without eviction
-    // - kSTATIC_BATCH, does not schedule new requests until all requests in current batch are completed  
-    /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::kGUARANTEED_NO_EVICT,
-    // - kFIRST_COME_FIRST_SERVED, sequential chunking, complete the unfinished context phase first
-    // - kEQUAL_PROGRESS, Iterate through each context request in sequence and attempt to increase its chunk count until the constraint is exceeded 
-    /* contextChunkingPolicy =*/tle::ContextChunkingPolicy::kFIRST_COME_FIRST_SERVED,
-    /* dynamicBatchConfig =*/dynamic_batch_config);
+        // - kMAX_UTILIZATION, this is expected to maximum GPU throught, it might require that some requests be paused
+        // and restarted
+        // - kGUARANTEED_NO_EVICT, uses KV cache more conservatively guaranteeing that a request, once started, will run
+        // to completion without eviction
+        // - kSTATIC_BATCH, does not schedule new requests until all requests in current batch are completed
+        /* capacitySchedulerPolicy =*/tle::CapacitySchedulerPolicy::kGUARANTEED_NO_EVICT,
+        // - kFIRST_COME_FIRST_SERVED, sequential chunking, complete the unfinished context phase first
+        // - kEQUAL_PROGRESS, Iterate through each context request in sequence and attempt to increase its chunk count
+        // until the constraint is exceeded
+        /* contextChunkingPolicy =*/tle::ContextChunkingPolicy::kFIRST_COME_FIRST_SERVED,
+        /* dynamicBatchConfig =*/dynamic_batch_config);
 
     return scheduler_config;
 }
@@ -83,14 +86,16 @@ static tle::KvCacheConfig getKvCacheConfig(bool enable_kv_reuse) {
 void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
     executor_config->setSchedulerConfig(getSchedulerConfig());
     executor_config->setKvCacheConfig(getKvCacheConfig(enable_kv_reuse));
-    // This feature splits the context into serveral chunks, the size of the chunk needs to be an integer multiple of the kv-cache block size
+    // This feature splits the context into serveral chunks, the size of the chunk needs to be an integer multiple of
+    // the kv-cache block size
     executor_config->setEnableChunkedContext(/* enableChunkedContext =*/false);
     executor_config->setNormalizeLogProbs(/* normalizeLogProbs =*/false);
     executor_config->setIterStatsMaxIterations(
         /* iterStatsMaxIterations =*/tle::ExecutorConfig::kDefaultIterStatsMaxIterations);
     executor_config->setRequestStatsMaxIterations(
         /* requestStatsMaxIterations =*/tle::ExecutorConfig::kDefaultRequestStatsMaxIterations);
-    // - kSTATIC, the traditional batching schema with a batch of requets running in lockstep until all other requests are completed
+    // - kSTATIC, the traditional batching schema with a batch of requets running in lockstep until all other requests
+    // are completed
     // - kINFLIGHT, the requests are returned as soon as the end condition is met without any padding
     executor_config->setBatchingType(
         /* batchingType =*/tle::BatchingType::kINFLIGHT);
@@ -143,7 +148,8 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
     executor_config->setExtendedRuntimePerfKnobConfig(extended_runtime_perf_knob_config);
 
     executor_config->setRecvPollPeriodMs(/* recvPollPeriodMs =*/0);
-    // The maximum time in microseconds a scheduled request can remain idle before getting terminated, default is 3 minutes
+    // The maximum time in microseconds a scheduled request can remain idle before getting terminated, default is 3
+    // minutes
     executor_config->setMaxSeqIdleMicroseconds(
         /* maxSeqIdleMicroseconds =*/180000000);
 
@@ -233,7 +239,6 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* guideDecodingParams =*/std::nullopt,
         /* languageAdapterUid =*/std::nullopt,
         /* allottedTimeMs =*/std::nullopt);
-    // Add requests
     if (executor->canEnqueueRequests()) {
         request_ids.push_back(executor->enqueueRequest(std::move(request)));
     }
@@ -260,7 +265,8 @@ void InferenceSession::infer() {
                     for (int b = 0; b < result.outputTokenIds.size(); ++b) {
                         std::string output_text;
                         tokenizer_session->decode(output_text, result.outputTokenIds.at(b));
-                        output_texts_mapping.try_emplace(response.getRequestId()).first->second.emplace_back(output_text);
+                        output_texts_mapping.try_emplace(response.getRequestId())
+                            .first->second.emplace_back(output_text);
                     }
                 }
             }
@@ -299,7 +305,7 @@ std::optional<OutputConfig> InferenceSession::serve() {
             for (const std::vector<tle::FloatType> &vec_logprobs : result.logProbs.value()) {
                 std::vector<float> inner_logprobs(vec_logprobs.size());
                 std::transform(vec_logprobs.begin(), vec_logprobs.end(), inner_logprobs.begin(),
-                            [](float v) { return std::round(v * 10000.0f) / 10000.0f; });
+                               [](float v) { return std::round(v * 10000.0f) / 10000.0f; });
                 output_logprobs.push_back(std::move(inner_logprobs));
             }
 
@@ -321,11 +327,11 @@ bool TokenizerSession::initialize(fs::path model_dir) {
     try {
         std::string blob = common_utils::LoadBytesFromFile((model_dir / "tokenizer.json").string());
         processor = tokenizers::Tokenizer::FromBlobJSON(blob);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         LOG_ERROR("Failed to load tokenizer!");
         return false;
     }
-    
+
     return true;
 }
 
@@ -336,11 +342,11 @@ bool TokenizerSession::initialize(fs::path model_dir) {
 bool TokenizerSession::encode(const std::string &input_text, tle::VecTokens &input_ids) {
     try {
         input_ids = processor->Encode(input_text);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         LOG_ERROR("Failed to encode input!");
         return false;
     }
-    
+
     return true;
 }
 
@@ -351,10 +357,10 @@ bool TokenizerSession::encode(const std::string &input_text, tle::VecTokens &inp
 bool TokenizerSession::decode(std::string &output_text, const tle::VecTokens &output_ids) {
     try {
         output_text = processor->Decode(output_ids);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         LOG_ERROR("Failed to decode output!");
         return false;
     }
-    
+
     return true;
 }

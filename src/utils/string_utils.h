@@ -9,8 +9,7 @@ using json = nlohmann::json;
 
 std::string dumpJson(json &body);
 
-template <typename T>
-T getValueorDefault(json &params, const std::string &key, const T &default_value) {
+template <typename T> T getValueorDefault(json &params, const std::string &key, const T &default_value) {
     if (params.contains(key)) {
         try {
             return params[key].get<T>();
