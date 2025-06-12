@@ -30,7 +30,7 @@ void handleRequests(const httplib::Request &req, httplib::Response &res, Inferen
         unsigned top_k = getValueorDefault<int>(body_json["parameters"], "top_k", 1);
         float top_p = getValueorDefault<float>(body_json["parameters"], "top_p", 0.9);
         SamplingParameters sampling_parameters = {is_streaming, max_new_tokens, num_beams, top_k, top_p};
-        // The model_dir will not be used when adding requests, we set it to null here
+        // The model_dir will not be used when adding requests，we set it to null here
         InputConfig input_config = {/* model_dir =*/std::nullopt,
                                     /* input_text =*/inputs,
                                     /* sampling_parameters =*/sampling_parameters};
@@ -93,13 +93,13 @@ int main(int argc, char **argv, char **envp) {
         return 0;
     }
 
-    std::unique_ptr<httplib::Server> server;
+    httplib::Server server;
 
-    server->Post("/generate_stream", [&](const httplib::Request &req, httplib::Response &res) {
+    server.Post("/generate_stream", [&](const httplib::Request &req, httplib::Response &res) {
         res.set_header("Content-Type", "text/event-stream");
         handleRequests(req, res, &inference_session);
     });
 
     LOG_INFO("Server available at 0.0.0.0:" + std::to_string(input_server_config.port));
-    server->listen("0.0.0.0", input_server_config.port);
+    server.listen("0.0.0.0", input_server_config.port);
 }

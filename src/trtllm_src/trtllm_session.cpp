@@ -38,7 +38,6 @@ bool InferenceSession::initialize(const std::string &model_dir) {
 /// @brief Initialize SchedulerConfig defined in executor.h
 /// @return The struct SchedulerConfig
 static tle::SchedulerConfig getSchedulerConfig() {
-    // TODO: What the relationship between this and the fixed value when exporting the model?
     tle::DynamicBatchConfig dynamic_batch_config = tle::DynamicBatchConfig(
         /* enableBatchSizeTuning =*/false,
         /* enableMaxNumTokensTuning =*/false,
@@ -77,7 +76,9 @@ static tle::KvCacheConfig getKvCacheConfig(bool enable_kv_reuse) {
         /* crossKvCacheFraction =*/std::nullopt,
         /* secondaryOffloadMinPriority =*/std::nullopt,
         /* eventBufferMaxSize =*/0,
-        /* runtimeDefaults =*/std::nullopt);
+        /* runtimeDefaults =*/std::nullopt,
+        /* enablePartialReuse =*/true,
+        /* copyOnPartialReuse =*/true);
 
     return kv_cache_config;
 }
@@ -105,7 +106,8 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
         /* commMode =*/tle::CommunicationMode::kLEADER,
         /* deviceIds =*/std::nullopt,
         /* participantIds =*/std::nullopt,
-        /* orchestratorConfig =*/std::nullopt);
+        /* orchestratorConfig =*/std::nullopt,
+        /* numNodes =*/std::nullopt);
     executor_config->setParallelConfig(parallel_config);
 
     tle::PeftCacheConfig peft_cache_config(
@@ -119,7 +121,8 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
         /* maxPagesPerBlockHost =*/24,
         /* maxPagesPerBlockDevice =*/8,
         /* deviceCachePercent =*/std::nullopt,
-        /* hostCacheSize =*/std::nullopt);
+        /* hostCacheSize =*/std::nullopt,
+        /* loraPrefetchDir =*/std::nullopt);
     executor_config->setPeftCacheConfig(peft_cache_config);
 
     tle::LogitsPostProcessorConfig logits_post_processor_config(
@@ -132,9 +135,10 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
         /* decodingMode =*/std::nullopt,
         /* lookaheadDecodingConfig =*/std::nullopt,
         /* medusaChoices =*/std::nullopt,
-        /* EagleConfig =*/std::nullopt);
+        /* eagleConfig =*/std::nullopt);
     executor_config->setDecodingConfig(decoding_config);
 
+    executor_config->setUseGpuDirectStorage(/* useGpuDirectStorage =*/false);
     // Set the GPU weights percent for weight streaming
     executor_config->setGpuWeightsPercent(/* gpuWeightsPercent =*/1.0);
     // The maximum number of requests allowed in queue before rejecting new requests
@@ -147,6 +151,7 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
         /* cudaGraphCacheSize =*/0);
     executor_config->setExtendedRuntimePerfKnobConfig(extended_runtime_perf_knob_config);
 
+    // executor_config->setDebugConfig(/* debugConfig =*/std::nullopt);
     executor_config->setRecvPollPeriodMs(/* recvPollPeriodMs =*/0);
     // The maximum time in microseconds a scheduled request can remain idle before getting terminated, default is 3
     // minutes
@@ -157,12 +162,24 @@ void InferenceSession::initializeExecutor(bool enable_kv_reuse) {
         /* fastLogits =*/false);
     executor_config->setSpecDecConfig(speculative_decoding_config);
 
-    tle::GuidedDecodingConfig guided_decoding_config(
-        /* backend =*/tle::GuidedDecodingConfig::GuidedDecodingBackend::kXGRAMMAR,
-        /* encodedVocab =*/std::nullopt,
-        /* tokenizerStr =*/std::nullopt,
-        /* stopTokenIds =*/std::nullopt);
-    // Initialize executor
+    // tle::GuidedDecodingConfig guided_decoding_config(
+    //     /* backend =*/tle::GuidedDecodingConfig::GuidedDecodingBackend::kXGRAMMAR,
+    //     /* encodedVocab =*/std::nullopt,
+    //     /* tokenizerStr =*/std::nullopt,
+    //     /* stopTokenIds =*/std::nullopt);
+    // executor_config->setGuidedDecodingConfig(guided_decoding_config);
+
+    std::vector<tle::AdditionalModelOutput> additional_model_outputs;
+    executor_config->setAdditionalModelOutputs(/* additionalModelOutputs =*/additional_model_outputs);
+
+    executor_config->setGatherGenerationLogits(/* gatherGenerationLogits =*/false);
+    executor_config->setPromptTableOffloading(/* promptTableOffloading =*/false);
+
+    tle::CacheTransceiverConfig cache_transceiver_config(/* maxNumTokens =*/std::nullopt);
+    executor_config->setCacheTransceiverConfig(cache_transceiver_config);
+
+    executor_config->setEnableTrtOverlap(/* enableTrtOverlap =*/false);
+
     executor = std::make_unique<tle::Executor>(
         /* modelPath =*/model_dir,
         /* modelType =*/tle::ModelType::kDECODER_ONLY,
@@ -184,7 +201,8 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* returnGenerationLogits =*/false,
         /* excludeInputFromOutput =*/true,
         /* returnEncoderOutput =*/false,
-        /* returnPerfMetrics =*/false);
+        /* returnPerfMetrics =*/false,
+        /* additionalModelOutputs =*/std::nullopt);
     tle::SamplingConfig sampling_config = tle::SamplingConfig(
         /* beamWidth =*/input_config.sampling_parameters.num_beams,
         /* topK =*/input_config.sampling_parameters.top_k,
@@ -202,7 +220,9 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* lengthPenalty =*/std::nullopt,
         /* earlyStopping =*/std::nullopt,
         /* noRepeatNgramSize =*/std::nullopt,
-        /* numReturnSequences =*/std::nullopt);
+        /* numReturnSequences =*/std::nullopt,
+        /* minP =*/std::nullopt,
+        /* beamWidthArray =*/std::nullopt);
     tle::Request request = tle::Request(
         /* inputTokenIds =*/vec_tokens,
         /* maxTokens =*/input_config.sampling_parameters.max_new_tokens,
@@ -239,6 +259,7 @@ void InferenceSession::addRequests(const InputConfig &input_config) {
         /* guideDecodingParams =*/std::nullopt,
         /* languageAdapterUid =*/std::nullopt,
         /* allottedTimeMs =*/std::nullopt);
+
     if (executor->canEnqueueRequests()) {
         request_ids.push_back(executor->enqueueRequest(std::move(request)));
     }

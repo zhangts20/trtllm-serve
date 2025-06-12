@@ -10,11 +10,13 @@ copy scrits/base.py llama2-7b.yml
 python scrits/export.py llama2-7b.yml 
 ```
 ## Execute Engine
-### Offline Inference
 ```shell
 # build
 mkdir build && cd build
 cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
+```
+### Offline Inference
+```shell
 tllm-infer --help
 ```
 | args | type | default | notes |
@@ -25,12 +27,6 @@ tllm-infer --help
 | streaming | bool | False | Whether to use streaming inference |
 | num_beams | int | 1 | The number of return sequences |
 ### Online inference
-The script to build engine:
-```shell
-mkdir build && cd build
-cmake .. -DTRT_ROOT=/usr/local/tensorrt && make -j 32
-```
-#### Start Server
 ```shell
 tllm-serve --help
 ```
