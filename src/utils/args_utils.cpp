@@ -51,12 +51,12 @@ InputConfig parseInferArgs(int argc, char **argv, char **envp) {
 
 InputServerConfig parseServerArgs(int argc, char **argv, char **envp) {
     InputServerConfig input_server_config;
-    // clang-format off
     cxxopts::Options options("main", "A cpp inference of TensorRT-LLM.");
     options.add_options()("help", "Print help");
     options.add_options()("model_dir", "The input model directory.", cxxopts::value<std::string>());
     options.add_options()("port", "The port of serving.", cxxopts::value<int>()->default_value("18001"));
-    // clang-format on
+    // TODO
+    options.add_options()("capacity_scheduler_policy", "The policy used to select the subset of available requets.", cxxopts::value<std::string()>());
     cxxopts::ParseResult args = options.parse(argc, argv);
 
     if (args.count("help")) {
